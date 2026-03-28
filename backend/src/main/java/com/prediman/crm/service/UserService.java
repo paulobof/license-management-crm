@@ -1,0 +1,97 @@
+package com.prediman.crm.service;
+
+import com.prediman.crm.dto.UsuarioRequest;
+import com.prediman.crm.dto.UsuarioResponse;
+import com.prediman.crm.dto.UsuarioUpdateRequest;
+import com.prediman.crm.exception.BusinessException;
+import com.prediman.crm.exception.ResourceNotFoundException;
+import com.prediman.crm.model.Usuario;
+import com.prediman.crm.repository.UsuarioRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class UserService {
+
+    private final UsuarioRepository usuarioRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    @Transactional(readOnly = true)
+    public List<UsuarioResponse> findAll() {
+        return usuarioRepository.findAll()
+                .stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public UsuarioResponse create(UsuarioRequest request) {
+        if (usuarioRepository.existsByEmail(request.getEmail())) {
+            throw new BusinessException("E-mail já cadastrado: " + request.getEmail());
+        }
+
+        Usuario usuario = Usuario.builder()
+                .nome(request.getNome())
+                .email(request.getEmail())
+                .senhaHash(passwordEncoder.encode(request.getSenha()))
+                .perfil(request.getPerfil())
+                .ativo(true)
+                .build();
+
+        Usuario saved = usuarioRepository.save(usuario);
+        log.info("Usuário criado com id: {}", saved.getId());
+        return toResponse(saved);
+    }
+
+    @Transactional
+    public UsuarioResponse update(Long id, UsuarioUpdateRequest request) {
+        Usuario usuario = findUsuarioById(id);
+
+        if (!usuario.getEmail().equals(request.getEmail())
+                && usuarioRepository.existsByEmail(request.getEmail())) {
+            throw new BusinessException("E-mail já cadastrado: " + request.getEmail());
+        }
+
+        usuario.setNome(request.getNome());
+        usuario.setEmail(request.getEmail());
+        usuario.setPerfil(request.getPerfil());
+
+        Usuario saved = usuarioRepository.save(usuario);
+        log.info("Usuário atualizado com id: {}", saved.getId());
+        return toResponse(saved);
+    }
+
+    @Transactional
+    public UsuarioResponse toggleStatus(Long id) {
+        Usuario usuario = findUsuarioById(id);
+        usuario.setAtivo(!usuario.getAtivo());
+        Usuario saved = usuarioRepository.save(usuario);
+        log.info("Status do usuário {} alterado para ativo={}", id, saved.getAtivo());
+        return toResponse(saved);
+    }
+
+    private Usuario findUsuarioById(Long id) {
+        return usuarioRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário", id));
+    }
+
+    private UsuarioResponse toResponse(Usuario usuario) {
+        return UsuarioResponse.builder()
+                .id(usuario.getId())
+                .nome(usuario.getNome())
+                .email(usuario.getEmail())
+                .perfil(usuario.getPerfil())
+                .ativo(usuario.getAtivo())
+                .createdAt(usuario.getCreatedAt())
+                .ultimoLogin(usuario.getUltimoLogin())
+                .build();
+    }
+}
