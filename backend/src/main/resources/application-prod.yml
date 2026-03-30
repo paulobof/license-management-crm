@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/prediman_crm
+    username: ${DB_USERNAME:prediman}
+    password: ${DB_PASSWORD:prediman123}
+  jpa:
+    show-sql: false

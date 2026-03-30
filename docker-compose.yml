@@ -5,12 +5,42 @@ services:
     container_name: prediman-db
     environment:
       POSTGRES_DB: prediman_crm
-      POSTGRES_USER: prediman
-      POSTGRES_PASSWORD: prediman123
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${DB_USERNAME:-prediman}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-prediman123}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prediman -d prediman_crm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: prediman-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_USERNAME: ${DB_USERNAME:-prediman}
+      DB_PASSWORD: ${DB_PASSWORD:-prediman123}
+      JWT_SECRET: ${JWT_SECRET:-prediman-crm-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: prediman-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
 
 volumes:
   pgdata:
