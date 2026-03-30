@@ -36,8 +36,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: prediman-frontend
-    ports:
-      - "80:80"
+    expose:
+      - "80"
     depends_on:
       - backend
     restart: unless-stopped
