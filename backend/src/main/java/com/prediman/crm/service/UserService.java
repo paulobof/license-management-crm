@@ -6,6 +6,7 @@ import com.prediman.crm.dto.UsuarioUpdateRequest;
 import com.prediman.crm.exception.BusinessException;
 import com.prediman.crm.exception.ResourceNotFoundException;
 import com.prediman.crm.model.Usuario;
+import com.prediman.crm.model.enums.Perfil;
 import com.prediman.crm.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -60,6 +61,10 @@ public class UserService {
             throw new BusinessException("E-mail já cadastrado: " + request.getEmail());
         }
 
+        if (usuario.getPerfil() == Perfil.ADMIN && request.getPerfil() != Perfil.ADMIN) {
+            verificarUltimoAdmin(usuario.getId());
+        }
+
         usuario.setNome(request.getNome());
         usuario.setEmail(request.getEmail());
         usuario.setPerfil(request.getPerfil());
@@ -72,10 +77,22 @@ public class UserService {
     @Transactional
     public UsuarioResponse toggleStatus(Long id) {
         Usuario usuario = findUsuarioById(id);
+
+        if (usuario.getAtivo() && usuario.getPerfil() == Perfil.ADMIN) {
+            verificarUltimoAdmin(usuario.getId());
+        }
+
         usuario.setAtivo(!usuario.getAtivo());
         Usuario saved = usuarioRepository.save(usuario);
         log.info("Status do usuário {} alterado para ativo={}", id, saved.getAtivo());
         return toResponse(saved);
+    }
+
+    private void verificarUltimoAdmin(Long idUsuario) {
+        long adminsAtivos = usuarioRepository.countByPerfilAndAtivoTrue(Perfil.ADMIN);
+        if (adminsAtivos <= 1) {
+            throw new BusinessException("Não é possível desativar ou rebaixar o único administrador ativo do sistema.");
+        }
     }
 
     private Usuario findUsuarioById(Long id) {

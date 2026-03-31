@@ -1,6 +1,7 @@
 package com.prediman.crm.model;
 
 import com.prediman.crm.model.enums.StatusCliente;
+import com.prediman.crm.model.enums.TipoPessoa;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -23,6 +24,11 @@ public class Cliente {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo_pessoa", nullable = false, length = 10)
+    @Builder.Default
+    private TipoPessoa tipoPessoa = TipoPessoa.JURIDICA;
+
     @Column(name = "razao_social", nullable = false)
     private String razaoSocial;
 
@@ -31,6 +37,9 @@ public class Cliente {
 
     @Column(unique = true, length = 20)
     private String cnpj;
+
+    @Column(unique = true, length = 14)
+    private String cpf;
 
     @Column(length = 30)
     private String ie;

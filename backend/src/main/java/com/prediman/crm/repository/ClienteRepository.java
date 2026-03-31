@@ -17,5 +17,9 @@ public interface ClienteRepository extends JpaRepository<Cliente, Long>, JpaSpec
 
     boolean existsByCnpjAndIdNot(String cnpj, Long id);
 
+    boolean existsByCpf(String cpf);
+
+    boolean existsByCpfAndIdNot(String cpf, Long id);
+
     long countByStatus(StatusCliente status);
 }

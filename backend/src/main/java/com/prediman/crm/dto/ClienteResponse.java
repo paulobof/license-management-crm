@@ -1,6 +1,7 @@
 package com.prediman.crm.dto;
 
 import com.prediman.crm.model.enums.StatusCliente;
+import com.prediman.crm.model.enums.TipoPessoa;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -17,9 +18,11 @@ import java.util.List;
 public class ClienteResponse {
 
     private Long id;
+    private TipoPessoa tipoPessoa;
     private String razaoSocial;
     private String nomeFantasia;
     private String cnpj;
+    private String cpf;
     private String ie;
     private String segmento;
     private LocalDate dataFundacao;

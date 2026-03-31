@@ -17,11 +17,14 @@ import java.util.List;
 @AllArgsConstructor
 public class ClienteRequest {
 
-    @NotBlank(message = "Razão social é obrigatória")
+    private String tipoPessoa;
+
+    @NotBlank(message = "Razão social / Nome é obrigatório")
     private String razaoSocial;
 
     private String nomeFantasia;
     private String cnpj;
+    private String cpf;
     private String ie;
     private String segmento;
     private LocalDate dataFundacao;

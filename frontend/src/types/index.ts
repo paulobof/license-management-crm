@@ -13,11 +13,15 @@ export interface LoginResponse {
   perfil: 'ADMIN' | 'USUARIO';
 }
 
+export type TipoPessoa = 'FISICA' | 'JURIDICA';
+
 export interface Cliente {
   id: number;
+  tipoPessoa: TipoPessoa;
   razaoSocial: string;
   nomeFantasia: string;
   cnpj: string;
+  cpf: string;
   ie: string;
   segmento: string;
   dataFundacao: string;

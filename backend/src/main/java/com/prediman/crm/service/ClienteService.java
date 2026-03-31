@@ -8,6 +8,7 @@ import com.prediman.crm.model.Cliente;
 import com.prediman.crm.model.Contato;
 import com.prediman.crm.model.Endereco;
 import com.prediman.crm.model.enums.StatusCliente;
+import com.prediman.crm.model.enums.TipoPessoa;
 import com.prediman.crm.repository.ClienteRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +37,10 @@ public class ClienteService {
                 && clienteRepository.existsByCnpj(request.getCnpj())) {
             throw new BusinessException("CNPJ já cadastrado: " + request.getCnpj());
         }
+        if (StringUtils.hasText(request.getCpf())
+                && clienteRepository.existsByCpf(request.getCpf())) {
+            throw new BusinessException("CPF já cadastrado: " + request.getCpf());
+        }
 
         Cliente cliente = clienteMapper.toEntity(request);
         Cliente saved = clienteRepository.save(cliente);
@@ -51,10 +56,18 @@ public class ClienteService {
                 && clienteRepository.existsByCnpjAndIdNot(request.getCnpj(), id)) {
             throw new BusinessException("CNPJ já cadastrado: " + request.getCnpj());
         }
+        if (StringUtils.hasText(request.getCpf())
+                && clienteRepository.existsByCpfAndIdNot(request.getCpf(), id)) {
+            throw new BusinessException("CPF já cadastrado: " + request.getCpf());
+        }
 
+        if (StringUtils.hasText(request.getTipoPessoa())) {
+            cliente.setTipoPessoa(TipoPessoa.valueOf(request.getTipoPessoa()));
+        }
         cliente.setRazaoSocial(request.getRazaoSocial());
         cliente.setNomeFantasia(request.getNomeFantasia());
         cliente.setCnpj(request.getCnpj());
+        cliente.setCpf(request.getCpf());
         cliente.setIe(request.getIe());
         cliente.setSegmento(request.getSegmento());
         cliente.setDataFundacao(request.getDataFundacao());
@@ -130,7 +143,8 @@ public class ClienteService {
                 Predicate byRazaoSocial = cb.like(cb.lower(root.get("razaoSocial")), pattern);
                 Predicate byNomeFantasia = cb.like(cb.lower(root.get("nomeFantasia")), pattern);
                 Predicate byCnpj = cb.like(cb.lower(root.get("cnpj")), pattern);
-                predicates.add(cb.or(byRazaoSocial, byNomeFantasia, byCnpj));
+                Predicate byCpf = cb.like(cb.lower(root.get("cpf")), pattern);
+                predicates.add(cb.or(byRazaoSocial, byNomeFantasia, byCnpj, byCpf));
             }
 
             if (status != null) {

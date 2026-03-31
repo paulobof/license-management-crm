@@ -6,7 +6,8 @@ import * as clientesApi from '../../api/clientes';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 
-type Tab = 'empresa' | 'contatos' | 'enderecos';
+type Tab = 'cadastro' | 'contatos' | 'enderecos';
+type TipoPessoa = 'JURIDICA' | 'FISICA';
 
 const emptyContato = (): Contato => ({
   nome: '',
@@ -29,9 +30,11 @@ const emptyEndereco = (): Endereco => ({
 });
 
 interface FormData {
+  tipoPessoa: TipoPessoa;
   razaoSocial: string;
   nomeFantasia: string;
   cnpj: string;
+  cpf: string;
   ie: string;
   segmento: string;
   dataFundacao: string;
@@ -43,9 +46,11 @@ interface FormData {
 }
 
 const emptyForm = (): FormData => ({
+  tipoPessoa: 'JURIDICA',
   razaoSocial: '',
   nomeFantasia: '',
   cnpj: '',
+  cpf: '',
   ie: '',
   segmento: '',
   dataFundacao: '',
@@ -61,7 +66,7 @@ const ClienteForm: React.FC = () => {
   const navigate = useNavigate();
   const isEdit = !!id;
 
-  const [activeTab, setActiveTab] = useState<Tab>('empresa');
+  const [activeTab, setActiveTab] = useState<Tab>('cadastro');
   const [form, setForm] = useState<FormData>(emptyForm());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -75,9 +80,11 @@ const ClienteForm: React.FC = () => {
       .getById(Number(id))
       .then((cliente) => {
         setForm({
+          tipoPessoa: (cliente.tipoPessoa as TipoPessoa) ?? 'JURIDICA',
           razaoSocial: cliente.razaoSocial ?? '',
           nomeFantasia: cliente.nomeFantasia ?? '',
           cnpj: cliente.cnpj ?? '',
+          cpf: cliente.cpf ?? '',
           ie: cliente.ie ?? '',
           segmento: cliente.segmento ?? '',
           dataFundacao: cliente.dataFundacao ?? '',
@@ -99,11 +106,20 @@ const ClienteForm: React.FC = () => {
 
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
-    if (!form.razaoSocial.trim()) errs.razaoSocial = 'Razao social e obrigatoria.';
-    if (!form.cnpj.trim()) errs.cnpj = 'CNPJ e obrigatorio.';
+    if (!form.razaoSocial.trim()) {
+      errs.razaoSocial = form.tipoPessoa === 'FISICA'
+        ? 'Nome completo e obrigatorio.'
+        : 'Razao social e obrigatoria.';
+    }
+    if (form.tipoPessoa === 'JURIDICA' && !form.cnpj.trim()) {
+      errs.cnpj = 'CNPJ e obrigatorio.';
+    }
+    if (form.tipoPessoa === 'FISICA' && !form.cpf.trim()) {
+      errs.cpf = 'CPF e obrigatorio.';
+    }
     setErrors(errs);
     if (Object.keys(errs).length > 0) {
-      setActiveTab('empresa');
+      setActiveTab('cadastro');
     }
     return Object.keys(errs).length === 0;
   };
@@ -113,10 +129,11 @@ const ClienteForm: React.FC = () => {
     if (!validate()) return;
     setSaving(true);
     try {
+      const payload = { ...form };
       if (isEdit) {
-        await clientesApi.update(Number(id), form);
+        await clientesApi.update(Number(id), payload);
       } else {
-        await clientesApi.create(form);
+        await clientesApi.create(payload);
       }
       navigate('/clientes');
     } catch (err: unknown) {
@@ -193,7 +210,7 @@ const ClienteForm: React.FC = () => {
   };
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'empresa', label: 'Dados da Empresa' },
+    { key: 'cadastro', label: 'Cadastro' },
     { key: 'contatos', label: `Contatos (${form.contatos.length})` },
     { key: 'enderecos', label: `Enderecos (${form.enderecos.length})` },
   ];
@@ -227,7 +244,7 @@ const ClienteForm: React.FC = () => {
               className={[
                 'px-5 py-3.5 text-sm font-medium whitespace-nowrap transition-colors cursor-pointer',
                 activeTab === tab.key
-                  ? 'text-red-600 border-b-2 border-blue-500 bg-red-600/10'
+                  ? 'text-red-600 border-b-2 border-red-500 bg-red-600/10'
                   : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100/50',
               ].join(' ')}
             >
@@ -238,63 +255,149 @@ const ClienteForm: React.FC = () => {
 
         <form onSubmit={handleSubmit} noValidate>
           <div className="p-6">
-            {activeTab === 'empresa' && (
+            {activeTab === 'cadastro' && (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Input
-                    label="Razao Social *"
-                    type="text"
-                    placeholder="Razao Social Ltda"
-                    value={form.razaoSocial}
-                    onChange={(e) => setField('razaoSocial', e.target.value)}
-                    error={errors.razaoSocial}
-                  />
-                  <Input
-                    label="Nome Fantasia"
-                    type="text"
-                    placeholder="Nome Fantasia"
-                    value={form.nomeFantasia}
-                    onChange={(e) => setField('nomeFantasia', e.target.value)}
-                  />
+                {/* Toggle PJ / PF */}
+                <div className="flex rounded-lg border border-gray-300 overflow-hidden w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setField('tipoPessoa', 'JURIDICA')}
+                    className={[
+                      'px-5 py-2 text-sm font-medium transition-colors',
+                      form.tipoPessoa === 'JURIDICA'
+                        ? 'bg-red-600 text-white'
+                        : 'bg-white text-gray-700 border-r border-gray-300 hover:bg-gray-50',
+                    ].join(' ')}
+                  >
+                    Pessoa Juridica
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setField('tipoPessoa', 'FISICA')}
+                    className={[
+                      'px-5 py-2 text-sm font-medium transition-colors',
+                      form.tipoPessoa === 'FISICA'
+                        ? 'bg-red-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-50',
+                    ].join(' ')}
+                  >
+                    Pessoa Fisica
+                  </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Input
-                    label="CNPJ *"
-                    type="text"
-                    placeholder="00.000.000/0000-00"
-                    value={form.cnpj}
-                    onChange={(e) => setField('cnpj', e.target.value)}
-                    error={errors.cnpj}
-                  />
-                  <Input
-                    label="Inscricao Estadual"
-                    type="text"
-                    placeholder="000.000.000.000"
-                    value={form.ie}
-                    onChange={(e) => setField('ie', e.target.value)}
-                  />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Input
-                    label="Segmento"
-                    type="text"
-                    placeholder="Ex: Industria, Comercio"
-                    value={form.segmento}
-                    onChange={(e) => setField('segmento', e.target.value)}
-                  />
-                  <Input
-                    label="Data de Fundacao"
-                    type="date"
-                    value={form.dataFundacao}
-                    onChange={(e) => setField('dataFundacao', e.target.value)}
-                  />
-                  <Input
-                    label="Inicio como Cliente"
-                    type="date"
-                    value={form.dataInicioCliente}
-                    onChange={(e) => setField('dataInicioCliente', e.target.value)}
-                  />
-                </div>
+
+                {form.tipoPessoa === 'JURIDICA' && (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        label="Razao Social *"
+                        type="text"
+                        placeholder="Razao Social Ltda"
+                        value={form.razaoSocial}
+                        onChange={(e) => setField('razaoSocial', e.target.value)}
+                        error={errors.razaoSocial}
+                      />
+                      <Input
+                        label="Nome Fantasia"
+                        type="text"
+                        placeholder="Nome Fantasia"
+                        value={form.nomeFantasia}
+                        onChange={(e) => setField('nomeFantasia', e.target.value)}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        label="CNPJ *"
+                        type="text"
+                        placeholder="00.000.000/0000-00"
+                        value={form.cnpj}
+                        onChange={(e) => setField('cnpj', e.target.value)}
+                        error={errors.cnpj}
+                      />
+                      <Input
+                        label="Inscricao Estadual"
+                        type="text"
+                        placeholder="000.000.000.000"
+                        value={form.ie}
+                        onChange={(e) => setField('ie', e.target.value)}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <Input
+                        label="Segmento"
+                        type="text"
+                        placeholder="Ex: Industria, Comercio"
+                        value={form.segmento}
+                        onChange={(e) => setField('segmento', e.target.value)}
+                      />
+                      <Input
+                        label="Data de Fundacao"
+                        type="date"
+                        value={form.dataFundacao}
+                        onChange={(e) => setField('dataFundacao', e.target.value)}
+                      />
+                      <Input
+                        label="Inicio como Cliente"
+                        type="date"
+                        value={form.dataInicioCliente}
+                        onChange={(e) => setField('dataInicioCliente', e.target.value)}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {form.tipoPessoa === 'FISICA' && (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        label="Nome Completo *"
+                        type="text"
+                        placeholder="Nome completo"
+                        value={form.razaoSocial}
+                        onChange={(e) => setField('razaoSocial', e.target.value)}
+                        error={errors.razaoSocial}
+                      />
+                      <Input
+                        label="CPF *"
+                        type="text"
+                        placeholder="000.000.000-00"
+                        value={form.cpf}
+                        onChange={(e) => setField('cpf', e.target.value)}
+                        error={errors.cpf}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        label="RG"
+                        type="text"
+                        placeholder="00.000.000-0"
+                        value={form.ie}
+                        onChange={(e) => setField('ie', e.target.value)}
+                      />
+                      <Input
+                        label="Segmento"
+                        type="text"
+                        placeholder="Ex: Industria, Comercio"
+                        value={form.segmento}
+                        onChange={(e) => setField('segmento', e.target.value)}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        label="Data de Nascimento"
+                        type="date"
+                        value={form.dataFundacao}
+                        onChange={(e) => setField('dataFundacao', e.target.value)}
+                      />
+                      <Input
+                        label="Inicio como Cliente"
+                        type="date"
+                        value={form.dataInicioCliente}
+                        onChange={(e) => setField('dataInicioCliente', e.target.value)}
+                      />
+                    </div>
+                  </>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Input
                     as="select"

@@ -8,7 +8,9 @@ import com.prediman.crm.model.Cliente;
 import com.prediman.crm.model.Contato;
 import com.prediman.crm.model.Endereco;
 import com.prediman.crm.model.enums.TipoEndereco;
+import com.prediman.crm.model.enums.TipoPessoa;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -18,9 +20,12 @@ public class ClienteMapper {
 
     public Cliente toEntity(ClienteRequest request) {
         Cliente cliente = Cliente.builder()
+                .tipoPessoa(StringUtils.hasText(request.getTipoPessoa())
+                        ? TipoPessoa.valueOf(request.getTipoPessoa()) : TipoPessoa.JURIDICA)
                 .razaoSocial(request.getRazaoSocial())
                 .nomeFantasia(request.getNomeFantasia())
                 .cnpj(request.getCnpj())
+                .cpf(request.getCpf())
                 .ie(request.getIe())
                 .segmento(request.getSegmento())
                 .dataFundacao(request.getDataFundacao())
@@ -50,9 +55,11 @@ public class ClienteMapper {
     public ClienteResponse toResponse(Cliente cliente) {
         return ClienteResponse.builder()
                 .id(cliente.getId())
+                .tipoPessoa(cliente.getTipoPessoa())
                 .razaoSocial(cliente.getRazaoSocial())
                 .nomeFantasia(cliente.getNomeFantasia())
                 .cnpj(cliente.getCnpj())
+                .cpf(cliente.getCpf())
                 .ie(cliente.getIe())
                 .segmento(cliente.getSegmento())
                 .dataFundacao(cliente.getDataFundacao())
