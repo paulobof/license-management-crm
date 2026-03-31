@@ -19,9 +19,22 @@ public class DataSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        long adminsAtivos = usuarioRepository.countByPerfilAndAtivoTrue(Perfil.ADMIN);
+
+        if (adminsAtivos > 0) {
+            log.info("Sistema possui {} administrador(es) ativo(s)", adminsAtivos);
+            return;
+        }
+
+        log.warn("Nenhum administrador ativo encontrado! Verificando admin padrão...");
         String adminEmail = "admin@prediman.com.br";
 
-        if (!usuarioRepository.existsByEmail(adminEmail)) {
+        usuarioRepository.findByEmail(adminEmail).ifPresentOrElse(admin -> {
+            admin.setAtivo(true);
+            admin.setPerfil(Perfil.ADMIN);
+            usuarioRepository.save(admin);
+            log.warn("Administrador padrão reativado: {}", adminEmail);
+        }, () -> {
             Usuario admin = Usuario.builder()
                     .nome("Administrador")
                     .email(adminEmail)
@@ -29,11 +42,8 @@ public class DataSeeder implements CommandLineRunner {
                     .perfil(Perfil.ADMIN)
                     .ativo(true)
                     .build();
-
             usuarioRepository.save(admin);
-            log.info("Usuário administrador criado: {}", adminEmail);
-        } else {
-            log.info("Usuário administrador já existe: {}", adminEmail);
-        }
+            log.warn("Administrador padrão criado: {}", adminEmail);
+        });
     }
 }
