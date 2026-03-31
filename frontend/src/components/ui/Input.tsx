@@ -8,7 +8,7 @@ interface BaseInputProps {
 }
 
 interface TextInputProps extends BaseInputProps, InputHTMLAttributes<HTMLInputElement> {
-  type?: 'text' | 'email' | 'password' | 'date' | 'number' | 'tel';
+  type?: 'text' | 'email' | 'password' | 'date' | 'number' | 'tel' | 'time';
   as?: 'input';
 }
 
