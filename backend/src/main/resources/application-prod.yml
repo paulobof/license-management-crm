@@ -1,7 +1,10 @@
 spring:
   datasource:
     url: jdbc:postgresql://postgres:5432/prediman_crm
-    username: ${DB_USERNAME:prediman}
-    password: ${DB_PASSWORD:prediman123}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
   jpa:
     show-sql: false
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:https://prediman.paulobof.com.br}

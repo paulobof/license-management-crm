@@ -5,13 +5,13 @@ services:
     container_name: prediman-db
     environment:
       POSTGRES_DB: prediman_crm
-      POSTGRES_USER: ${DB_USERNAME:-prediman}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-prediman123}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U prediman -d prediman_crm"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-prediman} -d prediman_crm"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -23,9 +23,11 @@ services:
     container_name: prediman-backend
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      DB_USERNAME: ${DB_USERNAME:-prediman}
-      DB_PASSWORD: ${DB_PASSWORD:-prediman123}
-      JWT_SECRET: ${JWT_SECRET:-prediman-crm-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://prediman.paulobof.com.br}
     depends_on:
       postgres:
         condition: service_healthy

@@ -56,6 +56,10 @@ public class AuthService {
             throw new IllegalArgumentException("Refresh token inválido ou expirado");
         }
 
+        if (!jwtTokenProvider.isRefreshToken(refreshToken)) {
+            throw new IllegalArgumentException("Token fornecido nao e um refresh token");
+        }
+
         String email = jwtTokenProvider.getEmailFromToken(refreshToken);
         Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado"));

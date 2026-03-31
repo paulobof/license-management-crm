@@ -14,7 +14,7 @@ import java.util.List;
 @Repository
 public interface CobrancaRepository extends JpaRepository<Cobranca, Long>, JpaSpecificationExecutor<Cobranca> {
 
-    List<Cobranca> findByContratoId(Long contratoId);
+    List<Cobranca> findTop500ByContratoId(Long contratoId);
 
     boolean existsByContratoIdAndDataVencimentoBetween(Long contratoId, LocalDate start, LocalDate end);
 

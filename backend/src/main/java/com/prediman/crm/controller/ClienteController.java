@@ -32,6 +32,7 @@ public class ClienteController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
+        size = Math.min(size, 100);
         Pageable pageable = PageRequest.of(page, size, Sort.by("razaoSocial").ascending());
         Page<ClienteResponse> result = clienteService.findAll(search, status, pageable);
         return ResponseEntity.ok(result);
@@ -43,12 +44,14 @@ public class ClienteController {
     }
 
     @PostMapping("/clientes")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ClienteResponse> create(@Valid @RequestBody ClienteRequest request) {
         ClienteResponse response = clienteService.create(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PutMapping("/clientes/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ClienteResponse> update(@PathVariable Long id,
                                                    @Valid @RequestBody ClienteRequest request) {
         return ResponseEntity.ok(clienteService.update(id, request));
@@ -62,6 +65,7 @@ public class ClienteController {
     }
 
     @PatchMapping("/clientes/{id}/toggle-status")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ClienteResponse> toggleStatus(@PathVariable Long id) {
         return ResponseEntity.ok(clienteService.toggleStatus(id));
     }

@@ -71,6 +71,7 @@ public class AlertaController {
             @RequestParam(required = false) Long documentoId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        size = Math.min(size, 100);
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         return ResponseEntity.ok(alertaService.getLogs(pageable, status, tipo, documentoId));
     }
@@ -80,6 +81,7 @@ public class AlertaController {
      * Adia o alerta de um documento pelo número de dias informado (padrão 7).
      */
     @PostMapping("/{documentoId}/snooze")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<AlertaLogResponse> snooze(
             @PathVariable Long documentoId,
             @RequestParam(defaultValue = "7") int dias) {
@@ -91,6 +93,7 @@ public class AlertaController {
      * Dispara manualmente um alerta para o documento, criando uma entrada de log PENDENTE.
      */
     @PostMapping("/enviar-manual/{documentoId}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<AlertaLogResponse> enviarManual(@PathVariable Long documentoId) {
         return ResponseEntity.ok(alertaService.enviarManual(documentoId));
     }

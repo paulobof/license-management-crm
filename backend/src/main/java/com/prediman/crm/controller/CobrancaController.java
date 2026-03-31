@@ -33,6 +33,7 @@ public class CobrancaController {
             @RequestParam(required = false) Integer year,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        size = Math.min(size, 100);
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Order.asc("dataVencimento")));
         return ResponseEntity.ok(cobrancaService.findAll(contratoId, status, month, year, pageable));
     }
@@ -48,17 +49,20 @@ public class CobrancaController {
     }
 
     @PostMapping("/cobrancas")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<CobrancaResponse> create(@Valid @RequestBody CobrancaRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(cobrancaService.create(request));
     }
 
     @PutMapping("/cobrancas/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<CobrancaResponse> update(@PathVariable Long id,
                                                     @Valid @RequestBody CobrancaRequest request) {
         return ResponseEntity.ok(cobrancaService.update(id, request));
     }
 
     @PatchMapping("/cobrancas/{id}/pagar")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<CobrancaResponse> registrarPagamento(@PathVariable Long id,
                                                                 @RequestBody CobrancaRequest request) {
         return ResponseEntity.ok(cobrancaService.registrarPagamento(id, request));

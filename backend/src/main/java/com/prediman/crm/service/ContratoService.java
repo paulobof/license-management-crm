@@ -89,7 +89,7 @@ public class ContratoService {
 
     @Transactional(readOnly = true)
     public List<ContratoResponse> findByClienteId(Long clienteId) {
-        return contratoRepository.findByClienteId(clienteId)
+        return contratoRepository.findTop500ByClienteId(clienteId)
                 .stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());

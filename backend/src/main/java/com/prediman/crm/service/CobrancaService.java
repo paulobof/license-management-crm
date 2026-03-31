@@ -86,7 +86,7 @@ public class CobrancaService {
 
     @Transactional(readOnly = true)
     public List<CobrancaResponse> findByContratoId(Long contratoId) {
-        return cobrancaRepository.findByContratoId(contratoId)
+        return cobrancaRepository.findTop500ByContratoId(contratoId)
                 .stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());

@@ -33,6 +33,7 @@ public class DocumentoController {
             @RequestParam(required = false) Long clienteId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        size = Math.min(size, 100);
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Order.asc("dataValidade").nullsLast()));
         return ResponseEntity.ok(documentoService.findAll(search, categoria, status, clienteId, pageable));
     }
@@ -48,11 +49,13 @@ public class DocumentoController {
     }
 
     @PostMapping("/documentos")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<DocumentoResponse> create(@Valid @RequestBody DocumentoRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(documentoService.create(request));
     }
 
     @PutMapping("/documentos/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<DocumentoResponse> update(@PathVariable Long id,
                                                      @Valid @RequestBody DocumentoRequest request) {
         return ResponseEntity.ok(documentoService.update(id, request));

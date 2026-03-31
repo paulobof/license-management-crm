@@ -33,6 +33,7 @@ public class ContratoController {
             @RequestParam(required = false) Periodicidade periodicidade,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        size = Math.min(size, 100);
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         return ResponseEntity.ok(contratoService.findAll(search, clienteId, status, periodicidade, pageable));
     }
@@ -48,11 +49,13 @@ public class ContratoController {
     }
 
     @PostMapping("/contratos")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ContratoResponse> create(@Valid @RequestBody ContratoRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(contratoService.create(request));
     }
 
     @PutMapping("/contratos/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ContratoResponse> update(@PathVariable Long id,
                                                     @Valid @RequestBody ContratoRequest request) {
         return ResponseEntity.ok(contratoService.update(id, request));
@@ -66,6 +69,7 @@ public class ContratoController {
     }
 
     @PostMapping("/contratos/{id}/gerar-cobrancas")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ContratoResponse> gerarCobrancas(@PathVariable Long id) {
         return ResponseEntity.ok(contratoService.gerarCobrancasMensais(id));
     }

@@ -20,6 +20,9 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
@@ -90,8 +93,9 @@ public class AlertaService {
 
         // Fetch documents with dataValidade within the configured window (a_vencer) or already vencidos
         List<Documento> documentos = documentoRepository.findAll(
-                buildDocumentosVencendoSpec(today, limite)
-        );
+                buildDocumentosVencendoSpec(today, limite),
+                PageRequest.of(0, 100, Sort.by("dataValidade").ascending())
+        ).getContent();
 
         return documentos.stream()
                 .map(d -> toAlertaPendenteResponse(d, today))
@@ -213,8 +217,9 @@ public class AlertaService {
         LocalDate limite = today.plusDays(maxDias);
 
         List<Documento> documentos = documentoRepository.findAll(
-                buildDocumentosVencendoSpec(today, limite)
-        );
+                buildDocumentosVencendoSpec(today, limite),
+                PageRequest.of(0, 100, Sort.by("dataValidade").ascending())
+        ).getContent();
 
         int criados = 0;
         for (Documento documento : documentos) {

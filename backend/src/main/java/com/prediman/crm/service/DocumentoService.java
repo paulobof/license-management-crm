@@ -90,7 +90,7 @@ public class DocumentoService {
 
     @Transactional(readOnly = true)
     public List<DocumentoResponse> findByClienteId(Long clienteId) {
-        return documentoRepository.findByClienteIdOrderByDataValidadeAsc(clienteId)
+        return documentoRepository.findTop500ByClienteIdOrderByDataValidadeAsc(clienteId)
                 .stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
