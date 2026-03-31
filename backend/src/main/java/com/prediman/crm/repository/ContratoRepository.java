@@ -1,0 +1,14 @@
+package com.prediman.crm.repository;
+
+import com.prediman.crm.model.Contrato;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface ContratoRepository extends JpaRepository<Contrato, Long>, JpaSpecificationExecutor<Contrato> {
+
+    List<Contrato> findByClienteId(Long clienteId);
+}

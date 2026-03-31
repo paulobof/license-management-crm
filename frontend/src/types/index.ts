@@ -92,3 +92,74 @@ export interface DashboardSummary {
   documentosAVencer: number;
   documentosVencidos: number;
 }
+
+// Financeiro types
+export type Periodicidade = 'MENSAL' | 'TRIMESTRAL' | 'SEMESTRAL' | 'ANUAL' | 'AVULSO';
+export type StatusContrato = 'ATIVO' | 'ENCERRADO' | 'CANCELADO';
+export type StatusCobranca = 'PENDENTE' | 'PAGO' | 'VENCIDO' | 'CANCELADO';
+
+export interface Contrato {
+  id: number;
+  descricao: string;
+  valor: number;
+  periodicidade: Periodicidade;
+  dataInicio: string;
+  dataFim: string | null;
+  status: StatusContrato;
+  observacoes: string;
+  clienteId: number;
+  clienteNome: string;
+  cobrancas: Cobranca[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Cobranca {
+  id: number;
+  valorEsperado: number;
+  valorRecebido: number | null;
+  dataVencimento: string;
+  dataPagamento: string | null;
+  formaPagamento: string | null;
+  comprovanteDriveId: string | null;
+  status: StatusCobranca;
+  statusCalculado: StatusCobranca;
+  contratoId: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FinanceiroSummary {
+  aReceber: number;
+  recebido: number;
+  emAtraso: number;
+  vencendo7dias: number;
+}
+
+// Alerta types
+export interface AlertaPendente {
+  id: number;
+  tipo: 'DOCUMENTO' | 'COBRANCA';
+  nome: string;
+  clienteNome: string;
+  dataVencimento: string;
+  diasRestantes: number;
+  status: 'A_VENCER' | 'VENCIDO';
+}
+
+export interface NotificacaoSummary {
+  totalPendentes: number;
+  documentosAVencer: number;
+  documentosVencidos: number;
+  cobrancasVencidas: number;
+}
+
+export interface ConfiguracaoAlerta {
+  id: number;
+  diasAntecedencia: string;
+  horarioExecucao: string;
+  emailAtivo: boolean;
+  whatsappAtivo: boolean;
+  templateEmail: string;
+  templateWhatsapp: string;
+}

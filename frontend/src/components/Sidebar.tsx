@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, UserCog } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, UserCog, FileSignature, DollarSign, Bell } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
@@ -30,6 +30,21 @@ const navItems: NavItem[] = [
     to: '/documentos',
     label: 'Documentos',
     icon: <FileText size={18} />,
+  },
+  {
+    to: '/contratos',
+    label: 'Contratos',
+    icon: <FileSignature size={18} />,
+  },
+  {
+    to: '/financeiro',
+    label: 'Financeiro',
+    icon: <DollarSign size={18} />,
+  },
+  {
+    to: '/alertas',
+    label: 'Alertas',
+    icon: <Bell size={18} />,
   },
   {
     to: '/usuarios',

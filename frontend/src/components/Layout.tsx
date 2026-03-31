@@ -1,13 +1,23 @@
-import React, { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { Menu, Bell, LogOut, ChevronDown } from 'lucide-react';
 import Sidebar from './Sidebar';
 import { useAuth } from '../contexts/AuthContext';
+import * as alertasApi from '../api/alertas';
 
 const Layout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [totalPendentes, setTotalPendentes] = useState(0);
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    alertasApi
+      .getSummary()
+      .then((summary) => setTotalPendentes(summary.totalPendentes))
+      .catch(() => setTotalPendentes(0));
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -35,11 +45,16 @@ const Layout: React.FC = () => {
 
           <div className="flex items-center gap-2">
             <button
+              onClick={() => navigate('/alertas')}
               className="text-gray-400 hover:text-orange-500 p-2 rounded-md hover:bg-orange-50 transition-colors relative cursor-pointer"
               aria-label="Notificacoes"
             >
               <Bell size={18} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-orange-500 rounded-full"></span>
+              {totalPendentes > 0 && (
+                <span className="absolute top-1 right-1 min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none">
+                  {totalPendentes > 99 ? '99+' : totalPendentes}
+                </span>
+              )}
             </button>
 
             <div className="relative">
