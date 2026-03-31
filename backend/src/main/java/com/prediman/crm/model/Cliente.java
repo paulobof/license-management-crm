@@ -15,8 +15,8 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(exclude = {"contatos", "enderecos"})
-@ToString(exclude = {"contatos", "enderecos"})
+@EqualsAndHashCode(exclude = {"contatos", "enderecos", "documentos"})
+@ToString(exclude = {"contatos", "enderecos", "documentos"})
 public class Cliente {
 
     @Id
@@ -65,6 +65,10 @@ public class Cliente {
     @OneToMany(mappedBy = "cliente", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<Endereco> enderecos = new ArrayList<>();
+
+    @OneToMany(mappedBy = "cliente", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<Documento> documentos = new ArrayList<>();
 
     @PrePersist
     protected void onCreate() {
