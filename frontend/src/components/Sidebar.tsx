@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, UserCog } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, UserCog } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
@@ -25,6 +25,11 @@ const navItems: NavItem[] = [
     to: '/clientes',
     label: 'Clientes',
     icon: <Users size={18} />,
+  },
+  {
+    to: '/documentos',
+    label: 'Documentos',
+    icon: <FileText size={18} />,
   },
   {
     to: '/usuarios',
@@ -55,9 +60,16 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
           'lg:translate-x-0 lg:static lg:z-auto',
         ].join(' ')}
       >
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-200">
-          <img src="/logo.jpg" alt="Prediman" className="h-9" />
-          <span className="text-gray-800 font-semibold text-sm">CRM</span>
+        <div className="bg-gradient-to-r from-red-700 to-red-600 px-5 py-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-sm">
+              <img src="/logo.jpg" alt="Prediman" className="h-7 w-7 object-contain" />
+            </div>
+            <div>
+              <span className="text-white font-bold text-sm tracking-wide">Prediman</span>
+              <p className="text-red-200 text-xs">Sistema CRM</p>
+            </div>
+          </div>
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
@@ -69,10 +81,10 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
               onClick={onClose}
               className={({ isActive }) =>
                 [
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150',
+                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
                   isActive
-                    ? 'bg-red-50 text-red-700 border-l-4 border-red-600 pl-2'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50',
+                    ? 'bg-red-600 text-white shadow-md shadow-red-600/20'
+                    : 'text-gray-600 hover:text-red-700 hover:bg-red-50',
                 ].join(' ')
               }
             >

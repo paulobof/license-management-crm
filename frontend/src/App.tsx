@@ -8,6 +8,8 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const ClienteList = lazy(() => import('./pages/clientes/ClienteList'));
 const ClienteForm = lazy(() => import('./pages/clientes/ClienteForm'));
 const ClienteDetail = lazy(() => import('./pages/clientes/ClienteDetail'));
+const DocumentoList = lazy(() => import('./pages/documentos/DocumentoList'));
+const DocumentoForm = lazy(() => import('./pages/documentos/DocumentoForm'));
 const UsuarioList = lazy(() => import('./pages/usuarios/UsuarioList'));
 
 const PageLoader: React.FC = () => (
@@ -33,6 +35,9 @@ const App: React.FC = () => {
           <Route path="/clientes/novo" element={<ClienteForm />} />
           <Route path="/clientes/:id" element={<ClienteDetail />} />
           <Route path="/clientes/:id/editar" element={<ClienteForm />} />
+          <Route path="/documentos" element={<DocumentoList />} />
+          <Route path="/documentos/novo" element={<DocumentoForm />} />
+          <Route path="/documentos/:id/editar" element={<DocumentoForm />} />
           <Route
             path="/usuarios"
             element={

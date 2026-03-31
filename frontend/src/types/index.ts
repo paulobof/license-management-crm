@@ -59,3 +59,32 @@ export interface Page<T> {
   number: number;
   size: number;
 }
+
+export type CategoriaDocumento = 'CONTRATO' | 'ALVARA' | 'CERTIFICADO' | 'LICENCA' | 'NF' | 'OUTRO';
+export type StatusDocumento = 'VALIDO' | 'A_VENCER' | 'VENCIDO' | 'SEM_VALIDADE';
+
+export interface Documento {
+  id: number;
+  nome: string;
+  categoria: CategoriaDocumento;
+  dataEmissao: string;
+  dataValidade: string | null;
+  revisao: string;
+  observacoes: string;
+  googleDriveFileId: string;
+  googleDriveUrl: string;
+  tamanhoBytes: number;
+  mimeType: string;
+  statusCalculado: StatusDocumento;
+  clienteId: number;
+  clienteNome: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DashboardSummary {
+  totalClientes: number;
+  clientesAtivos: number;
+  documentosAVencer: number;
+  documentosVencidos: number;
+}
