@@ -209,16 +209,16 @@ const ClienteForm: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-zinc-100">
+        <h1 className="text-xl font-bold text-gray-900">
           {isEdit ? 'Editar Cliente' : 'Novo Cliente'}
         </h1>
-        <p className="text-sm text-zinc-500 mt-0.5">
+        <p className="text-sm text-gray-500 mt-0.5">
           {isEdit ? 'Atualize os dados do cliente' : 'Preencha os dados para cadastrar um novo cliente'}
         </p>
       </div>
 
-      <div className="bg-zinc-800 border border-zinc-700 rounded-xl overflow-hidden">
-        <div className="flex border-b border-zinc-700 overflow-x-auto">
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="flex border-b border-gray-200 overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab.key}
@@ -227,8 +227,8 @@ const ClienteForm: React.FC = () => {
               className={[
                 'px-5 py-3.5 text-sm font-medium whitespace-nowrap transition-colors cursor-pointer',
                 activeTab === tab.key
-                  ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-600/10'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50',
+                  ? 'text-red-600 border-b-2 border-blue-500 bg-red-600/10'
+                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100/50',
               ].join(' ')}
             >
               {tab.label}
@@ -319,20 +319,20 @@ const ClienteForm: React.FC = () => {
             {activeTab === 'contatos' && (
               <div className="space-y-4">
                 {form.contatos.length === 0 && (
-                  <p className="text-sm text-zinc-500 text-center py-6">
+                  <p className="text-sm text-gray-500 text-center py-6">
                     Nenhum contato adicionado. Clique em "+ Adicionar Contato" para comecar.
                   </p>
                 )}
                 {form.contatos.map((contato, idx) => (
                   <div
                     key={idx}
-                    className="bg-zinc-900 border border-zinc-700 rounded-lg p-4 space-y-3"
+                    className="bg-white border border-gray-200 rounded-lg p-4 space-y-3"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-zinc-300">
+                      <span className="text-sm font-medium text-gray-700">
                         Contato {idx + 1}
                         {contato.principal && (
-                          <span className="ml-2 text-xs text-blue-400 bg-blue-900/40 border border-blue-700/50 px-2 py-0.5 rounded-full">
+                          <span className="ml-2 text-xs text-red-600 bg-blue-900/40 border border-blue-700/50 px-2 py-0.5 rounded-full">
                             Principal
                           </span>
                         )}
@@ -393,7 +393,7 @@ const ClienteForm: React.FC = () => {
                         onChange={(e) => updateContato(idx, 'principal', e.target.checked)}
                         className="w-4 h-4 rounded accent-blue-500 cursor-pointer"
                       />
-                      <span className="text-sm text-zinc-300">Contato principal</span>
+                      <span className="text-sm text-gray-700">Contato principal</span>
                     </label>
                   </div>
                 ))}
@@ -407,17 +407,17 @@ const ClienteForm: React.FC = () => {
             {activeTab === 'enderecos' && (
               <div className="space-y-4">
                 {form.enderecos.length === 0 && (
-                  <p className="text-sm text-zinc-500 text-center py-6">
+                  <p className="text-sm text-gray-500 text-center py-6">
                     Nenhum endereco adicionado. Clique em "+ Adicionar Endereco" para comecar.
                   </p>
                 )}
                 {form.enderecos.map((endereco, idx) => (
                   <div
                     key={idx}
-                    className="bg-zinc-900 border border-zinc-700 rounded-lg p-4 space-y-3"
+                    className="bg-white border border-gray-200 rounded-lg p-4 space-y-3"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-zinc-300">
+                      <span className="text-sm font-medium text-gray-700">
                         Endereco {idx + 1}
                       </span>
                       <Button
@@ -445,14 +445,14 @@ const ClienteForm: React.FC = () => {
                         <option value="OUTRO">Outro</option>
                       </Input>
                       <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-zinc-300 mb-1">CEP</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">CEP</label>
                         <div className="flex gap-2">
                           <input
                             type="text"
                             placeholder="00000-000"
                             value={endereco.cep}
                             onChange={(e) => updateEndereco(idx, 'cep', e.target.value)}
-                            className="flex-1 bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="flex-1 bg-white border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500"
                           />
                           <Button
                             type="button"
@@ -529,12 +529,12 @@ const ClienteForm: React.FC = () => {
           </div>
 
           {errors.submit && (
-            <div className="mx-6 mb-4 bg-red-900/30 border border-red-700/50 rounded-lg px-4 py-3">
-              <p className="text-sm text-red-400">{errors.submit}</p>
+            <div className="mx-6 mb-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+              <p className="text-sm text-red-600">{errors.submit}</p>
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-zinc-700 bg-zinc-900/50">
+          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-white/50">
             <Button
               type="button"
               variant="ghost"

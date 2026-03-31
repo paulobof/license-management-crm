@@ -9,11 +9,11 @@ interface BadgeProps {
 const badgeConfig: Record<BadgeStatus, { label: string; classes: string }> = {
   ATIVO: {
     label: 'Ativo',
-    classes: 'bg-green-900/50 text-green-400 border border-green-700/50',
+    classes: 'bg-green-50 text-green-700 border border-green-200',
   },
   INATIVO: {
     label: 'Inativo',
-    classes: 'bg-red-900/50 text-red-400 border border-red-700/50',
+    classes: 'bg-gray-100 text-gray-600 border border-gray-200',
   },
 };
 

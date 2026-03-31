@@ -11,8 +11,8 @@ const ClienteDetail = lazy(() => import('./pages/clientes/ClienteDetail'));
 const UsuarioList = lazy(() => import('./pages/usuarios/UsuarioList'));
 
 const PageLoader: React.FC = () => (
-  <div className="flex items-center justify-center min-h-screen bg-zinc-950">
-    <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-500 border-t-transparent" />
+  <div className="flex items-center justify-center min-h-screen bg-gray-50">
+    <div className="animate-spin rounded-full h-10 w-10 border-2 border-red-600 border-t-transparent" />
   </div>
 );
 

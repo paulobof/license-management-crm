@@ -51,26 +51,26 @@ const Modal: React.FC<ModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
       <div
         className={[
-          'relative w-full bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl flex flex-col max-h-[90vh]',
+          'relative w-full bg-white border border-gray-200 rounded-xl shadow-2xl flex flex-col max-h-[90vh]',
           sizeClasses[size],
         ].join(' ')}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-700 shrink-0">
-          <h2 id="modal-title" className="text-lg font-semibold text-zinc-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
+          <h2 id="modal-title" className="text-lg font-semibold text-gray-900">
             {title}
           </h2>
           <button
             onClick={onClose}
-            className="text-zinc-400 hover:text-zinc-100 transition-colors p-1 rounded-md hover:bg-zinc-800 cursor-pointer"
+            className="text-gray-400 hover:text-gray-700 transition-colors p-1 rounded-md hover:bg-gray-100 cursor-pointer"
             aria-label="Fechar modal"
           >
             <X size={20} />
@@ -78,7 +78,7 @@ const Modal: React.FC<ModalProps> = ({
         </div>
         <div className="px-6 py-4 overflow-y-auto flex-1">{children}</div>
         {footer && (
-          <div className="px-6 py-4 border-t border-zinc-700 flex justify-end gap-3 shrink-0">
+          <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3 shrink-0">
             {footer}
           </div>
         )}

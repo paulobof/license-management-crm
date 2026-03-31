@@ -50,17 +50,16 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
       )}
       <aside
         className={[
-          'fixed top-0 left-0 h-full z-30 w-64 bg-zinc-950 border-r border-zinc-800 flex flex-col transition-transform duration-300 ease-in-out',
+          'fixed top-0 left-0 h-full z-30 w-64 bg-white border-r border-gray-200 flex flex-col transition-transform duration-300 ease-in-out',
           open ? 'translate-x-0' : '-translate-x-full',
           'lg:translate-x-0 lg:static lg:z-auto',
         ].join(' ')}
       >
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-zinc-800">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
-            <span className="text-white font-bold text-sm">P</span>
-          </div>
-          <span className="text-zinc-100 font-semibold text-sm">Prediman CRM</span>
+        <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-200">
+          <img src="/logo.jpg" alt="Prediman" className="h-9" />
+          <span className="text-gray-800 font-semibold text-sm">CRM</span>
         </div>
+
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {visibleItems.map((item) => (
             <NavLink
@@ -72,8 +71,8 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
                 [
                   'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150',
                   isActive
-                    ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30'
-                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800',
+                    ? 'bg-red-50 text-red-700 border-l-4 border-red-600 pl-2'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50',
                 ].join(' ')
               }
             >
@@ -82,8 +81,9 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
             </NavLink>
           ))}
         </nav>
-        <div className="px-3 py-4 border-t border-zinc-800">
-          <p className="text-xs text-zinc-600 text-center">v1.0.0</p>
+
+        <div className="px-3 py-4 border-t border-gray-200">
+          <p className="text-xs text-gray-400 text-center">v1.0.0</p>
         </div>
       </aside>
     </>

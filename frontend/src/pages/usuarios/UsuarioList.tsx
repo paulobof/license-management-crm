@@ -107,13 +107,13 @@ const UsuarioList: React.FC = () => {
       key: 'nome',
       header: 'Nome',
       render: (row: Usuario) => (
-        <span className="text-zinc-100 font-medium">{row.nome}</span>
+        <span className="text-gray-900 font-medium">{row.nome}</span>
       ),
     },
     {
       key: 'email',
       header: 'Email',
-      render: (row: Usuario) => <span className="text-zinc-400">{row.email}</span>,
+      render: (row: Usuario) => <span className="text-gray-500">{row.email}</span>,
     },
     {
       key: 'perfil',
@@ -123,8 +123,8 @@ const UsuarioList: React.FC = () => {
           className={[
             'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
             row.perfil === 'ADMIN'
-              ? 'bg-purple-900/50 text-purple-400 border border-purple-700/50'
-              : 'bg-zinc-700/50 text-zinc-400 border border-zinc-600/50',
+              ? 'bg-purple-50 text-purple-700 border border-purple-200'
+              : 'bg-gray-100 text-gray-600 border border-gray-200',
           ].join(' ')}
         >
           {row.perfil === 'ADMIN' ? 'Administrador' : 'Usuario'}
@@ -161,8 +161,8 @@ const UsuarioList: React.FC = () => {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-zinc-100">Usuarios</h1>
-          <p className="text-sm text-zinc-500 mt-0.5">
+          <h1 className="text-xl font-bold text-gray-900">Usuarios</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
             Gerenciamento de usuarios do sistema
           </p>
         </div>
@@ -231,8 +231,8 @@ const UsuarioList: React.FC = () => {
             <option value="ADMIN">Administrador</option>
           </Input>
           {submitError && (
-            <div className="bg-red-900/30 border border-red-700/50 rounded-lg px-4 py-3">
-              <p className="text-sm text-red-400">{submitError}</p>
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+              <p className="text-sm text-red-600">{submitError}</p>
             </div>
           )}
         </div>
