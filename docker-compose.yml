@@ -16,6 +16,28 @@ services:
       timeout: 5s
       retries: 5
 
+  pg-backup:
+    image: postgres:16-alpine
+    container_name: prediman-db-backup
+    environment:
+      PGHOST: postgres
+      PGDATABASE: prediman_crm
+      PGUSER: ${DB_USERNAME}
+      PGPASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgbackups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: /bin/sh
+    command: >
+      -c "while true; do
+        pg_dump -Fc > /backups/prediman_crm_$$(date +%Y%m%d_%H%M%S).dump
+        find /backups -name '*.dump' -mtime +7 -delete
+        sleep 86400
+      done"
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -31,6 +53,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
     restart: unless-stopped
 
   frontend:
@@ -41,8 +69,10 @@ services:
     expose:
       - "80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   pgdata:
+  pgbackups:

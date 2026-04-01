@@ -3,6 +3,8 @@ spring:
     url: jdbc:postgresql://localhost:5432/prediman_crm
     username: prediman
     password: prediman123
+  jpa:
+    show-sql: true
 
 jwt:
   secret: dev-only-prediman-crm-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256
