@@ -27,18 +27,19 @@ public class UserService {
 
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UsuarioMapper usuarioMapper;
 
     @Transactional(readOnly = true)
     public List<UsuarioResponse> findAll() {
         return usuarioRepository.findAll()
                 .stream()
-                .map(this::toResponse)
+                .map(usuarioMapper::toResponse)
                 .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
     public Page<UsuarioResponse> findAll(Pageable pageable) {
-        return usuarioRepository.findAll(pageable).map(this::toResponse);
+        return usuarioRepository.findAll(pageable).map(usuarioMapper::toResponse);
     }
 
     @Transactional
@@ -57,7 +58,7 @@ public class UserService {
 
         Usuario saved = usuarioRepository.save(usuario);
         log.info("Usuário criado com id: {}", saved.getId());
-        return toResponse(saved);
+        return usuarioMapper.toResponse(saved);
     }
 
     @Transactional
@@ -79,7 +80,7 @@ public class UserService {
 
         Usuario saved = usuarioRepository.save(usuario);
         log.info("Usuário atualizado com id: {}", saved.getId());
-        return toResponse(saved);
+        return usuarioMapper.toResponse(saved);
     }
 
     @Transactional
@@ -93,7 +94,7 @@ public class UserService {
         usuario.setAtivo(!usuario.getAtivo());
         Usuario saved = usuarioRepository.save(usuario);
         log.info("Status do usuário {} alterado para ativo={}", id, saved.getAtivo());
-        return toResponse(saved);
+        return usuarioMapper.toResponse(saved);
     }
 
     private void verificarUltimoAdmin(Long idUsuario) {
@@ -108,15 +109,4 @@ public class UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário", id));
     }
 
-    private UsuarioResponse toResponse(Usuario usuario) {
-        return UsuarioResponse.builder()
-                .id(usuario.getId())
-                .nome(usuario.getNome())
-                .email(usuario.getEmail())
-                .perfil(usuario.getPerfil())
-                .ativo(usuario.getAtivo())
-                .createdAt(usuario.getCreatedAt())
-                .ultimoLogin(usuario.getUltimoLogin())
-                .build();
-    }
 }

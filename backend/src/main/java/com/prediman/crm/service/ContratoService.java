@@ -1,6 +1,5 @@
 package com.prediman.crm.service;
 
-import com.prediman.crm.dto.CobrancaResponse;
 import com.prediman.crm.dto.ContratoRequest;
 import com.prediman.crm.dto.ContratoResponse;
 import com.prediman.crm.exception.BusinessException;
@@ -37,6 +36,7 @@ public class ContratoService {
     private final ContratoRepository contratoRepository;
     private final ClienteRepository clienteRepository;
     private final CobrancaRepository cobrancaRepository;
+    private final ContratoMapper contratoMapper;
 
     @Transactional
     public ContratoResponse create(ContratoRequest request) {
@@ -56,7 +56,7 @@ public class ContratoService {
 
         Contrato saved = contratoRepository.save(contrato);
         log.info("Contrato criado com id: {}", saved.getId());
-        return toResponse(saved);
+        return contratoMapper.toResponse(saved);
     }
 
     @Transactional
@@ -79,19 +79,19 @@ public class ContratoService {
 
         Contrato saved = contratoRepository.save(contrato);
         log.info("Contrato atualizado com id: {}", saved.getId());
-        return toResponse(saved);
+        return contratoMapper.toResponse(saved);
     }
 
     @Transactional(readOnly = true)
     public ContratoResponse findById(Long id) {
-        return toResponse(findContratoById(id));
+        return contratoMapper.toResponse(findContratoById(id));
     }
 
     @Transactional(readOnly = true)
     public List<ContratoResponse> findByClienteId(Long clienteId) {
         return contratoRepository.findTop500ByClienteId(clienteId)
                 .stream()
-                .map(this::toResponse)
+                .map(contratoMapper::toResponse)
                 .collect(Collectors.toList());
     }
 
@@ -100,7 +100,7 @@ public class ContratoService {
                                           StatusContrato status, Periodicidade periodicidade,
                                           Pageable pageable) {
         Specification<Contrato> spec = buildSpecification(search, clienteId, status, periodicidade);
-        return contratoRepository.findAll(spec, pageable).map(this::toResponse);
+        return contratoRepository.findAll(spec, pageable).map(contratoMapper::toResponse);
     }
 
     @Transactional
@@ -146,7 +146,7 @@ public class ContratoService {
         cobrancaRepository.save(cobranca);
         log.info("Cobrança mensal gerada para contrato id: {}, vencimento: {}", contratoId, dataVencimento);
 
-        return toResponse(findContratoById(contratoId));
+        return contratoMapper.toResponse(findContratoById(contratoId));
     }
 
     private Contrato findContratoById(Long id) {
@@ -180,42 +180,4 @@ public class ContratoService {
         };
     }
 
-    private CobrancaResponse toCobrancaResponse(Cobranca cobranca) {
-        return CobrancaResponse.builder()
-                .id(cobranca.getId())
-                .valorEsperado(cobranca.getValorEsperado())
-                .valorRecebido(cobranca.getValorRecebido())
-                .dataVencimento(cobranca.getDataVencimento())
-                .dataPagamento(cobranca.getDataPagamento())
-                .formaPagamento(cobranca.getFormaPagamento())
-                .comprovanteDriveId(cobranca.getComprovanteDriveId())
-                .status(cobranca.getStatus())
-                .statusCalculado(cobranca.getStatusCalculado())
-                .contratoId(cobranca.getContrato().getId())
-                .createdAt(cobranca.getCreatedAt())
-                .updatedAt(cobranca.getUpdatedAt())
-                .build();
-    }
-
-    ContratoResponse toResponse(Contrato contrato) {
-        List<CobrancaResponse> cobrancas = contrato.getCobrancas().stream()
-                .map(this::toCobrancaResponse)
-                .collect(Collectors.toList());
-
-        return ContratoResponse.builder()
-                .id(contrato.getId())
-                .descricao(contrato.getDescricao())
-                .valor(contrato.getValor())
-                .periodicidade(contrato.getPeriodicidade())
-                .dataInicio(contrato.getDataInicio())
-                .dataFim(contrato.getDataFim())
-                .status(contrato.getStatus())
-                .observacoes(contrato.getObservacoes())
-                .clienteId(contrato.getCliente().getId())
-                .clienteNome(contrato.getCliente().getRazaoSocial())
-                .cobrancas(cobrancas)
-                .createdAt(contrato.getCreatedAt())
-                .updatedAt(contrato.getUpdatedAt())
-                .build();
-    }
 }

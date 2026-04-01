@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:16-alpine:///prediman_test
+    username: test
+    password: test
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  flyway:
+    enabled: true
+
+jwt:
+  secret: test-only-prediman-crm-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256
+  expiration: 900000
+  refresh-expiration: 604800000
+
+admin:
+  initial-password: TestAdmin123!
