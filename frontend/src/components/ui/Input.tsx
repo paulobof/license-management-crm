@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import type { InputHTMLAttributes, SelectHTMLAttributes, ReactNode } from 'react';
 
 interface BaseInputProps {
@@ -24,39 +24,48 @@ const inputBaseClasses =
 
 const Input: React.FC<InputProps> = (props) => {
   const { label, error, className = '' } = props;
+  const generatedId = useId();
+  const inputId = props.id ?? generatedId;
+  const errorId = error ? `${inputId}-error` : undefined;
 
   const wrapperClass = className;
 
   if (props.as === 'select') {
-    const { label: _label, error: _error, className: _className, as: _as, children, ...rest } = props;
+    const { label: _label, error: _error, className: _className, as: _as, children, id: _id, ...rest } = props;
     return (
       <div className={wrapperClass}>
         {label && (
-          <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+          <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
         )}
         <select
           {...rest}
+          id={inputId}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={errorId}
           className={[inputBaseClasses, error ? 'border-red-500 focus:ring-red-500' : ''].join(' ')}
         >
           {children}
         </select>
-        {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+        {error && <p id={errorId} className="mt-1 text-xs text-red-600">{error}</p>}
       </div>
     );
   }
 
-  const { label: _label, error: _error, className: _className, as: _as, ...rest } = props as TextInputProps;
+  const { label: _label, error: _error, className: _className, as: _as, id: _id, ...rest } = props as TextInputProps;
 
   return (
     <div className={wrapperClass}>
       {label && (
-        <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+        <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
       )}
       <input
         {...rest}
+        id={inputId}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={errorId}
         className={[inputBaseClasses, error ? 'border-red-500 focus:ring-red-500' : ''].join(' ')}
       />
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {error && <p id={errorId} className="mt-1 text-xs text-red-600">{error}</p>}
     </div>
   );
 };

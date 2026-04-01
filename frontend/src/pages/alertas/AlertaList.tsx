@@ -6,11 +6,7 @@ import * as alertasApi from '../../api/alertas';
 import { useAuth } from '../../contexts/AuthContext';
 import Button from '../../components/ui/Button';
 
-const formatDate = (value: string | null): string => {
-  if (!value) return '—';
-  const [year, month, day] = value.split('-');
-  return `${day}/${month}/${year}`;
-};
+import { formatDate } from '../../utils/formatDate';
 
 const AlertaCard: React.FC<{
   alerta: AlertaPendente;

@@ -13,6 +13,7 @@ const Login: React.FC = () => {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setError('');
 
     if (!email.trim() || !password.trim()) {

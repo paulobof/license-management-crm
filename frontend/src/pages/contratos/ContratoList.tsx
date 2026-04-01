@@ -13,11 +13,7 @@ const formatBRL = (value: number | null | undefined): string => {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 };
 
-const formatDate = (value: string | null): string => {
-  if (!value) return '—';
-  const [year, month, day] = value.split('-');
-  return `${day}/${month}/${year}`;
-};
+import { formatDate } from '../../utils/formatDate';
 
 const statusConfig: Record<StatusContrato, { label: string; classes: string }> = {
   ATIVO: { label: 'Ativo', classes: 'bg-green-50 text-green-700 border border-green-200' },

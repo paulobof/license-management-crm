@@ -84,6 +84,7 @@ const ContratoForm: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     if (!validate()) return;
     setSaving(true);
     try {

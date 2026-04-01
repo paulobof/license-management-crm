@@ -4,6 +4,8 @@ import type { Cobranca, FinanceiroSummary, Page, StatusCobranca } from '../../ty
 import * as cobrancasApi from '../../api/cobrancas';
 import Table from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
+import SummaryCard from '../../components/ui/SummaryCard';
+import { formatDate } from '../../utils/formatDate';
 
 const PAGE_SIZE = 10;
 
@@ -12,56 +14,12 @@ const formatBRL = (value: number | null | undefined): string => {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 };
 
-const formatDate = (value: string | null): string => {
-  if (!value) return '—';
-  const [year, month, day] = value.split('-');
-  return `${day}/${month}/${year}`;
-};
-
 const statusCobrancaConfig: Record<StatusCobranca, { label: string; classes: string }> = {
   PENDENTE: { label: 'Pendente', classes: 'bg-yellow-50 text-yellow-700 border border-yellow-200' },
   PAGO: { label: 'Pago', classes: 'bg-green-50 text-green-700 border border-green-200' },
   VENCIDO: { label: 'Vencido', classes: 'bg-red-50 text-red-700 border border-red-200' },
   CANCELADO: { label: 'Cancelado', classes: 'bg-gray-100 text-gray-600 border border-gray-200' },
 };
-
-interface SummaryCardProps {
-  title: string;
-  value: string;
-  icon: React.ReactNode;
-  iconBg: string;
-  borderColor: string;
-  subtitle?: string;
-}
-
-const SummaryCard: React.FC<SummaryCardProps> = ({
-  title,
-  value,
-  icon,
-  iconBg,
-  borderColor,
-  subtitle,
-}) => (
-  <div
-    className={[
-      'bg-white rounded-xl p-5 flex items-start gap-4 shadow-sm border-l-4',
-      borderColor,
-    ].join(' ')}
-  >
-    <div
-      className={['w-11 h-11 rounded-xl flex items-center justify-center shrink-0', iconBg].join(
-        ' '
-      )}
-    >
-      {icon}
-    </div>
-    <div className="min-w-0">
-      <p className="text-sm text-gray-500 font-medium">{title}</p>
-      <p className="text-xl font-bold text-gray-900 mt-0.5">{value}</p>
-      {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
-    </div>
-  </div>
-);
 
 const MESES = [
   { value: '1', label: 'Janeiro' },
@@ -90,14 +48,16 @@ const FinanceiroPage: React.FC = () => {
   const [page, setPage] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
     cobrancasApi
       .getFinanceiroSummary()
-      .then(setSummary)
-      .catch(() => setSummary(null))
-      .finally(() => setLoadingSummary(false));
+      .then((data) => { if (!cancelled) setSummary(data); })
+      .catch(() => { if (!cancelled) setSummary(null); })
+      .finally(() => { if (!cancelled) setLoadingSummary(false); });
+    return () => { cancelled = true; };
   }, []);
 
-  const fetchCobrancas = useCallback(async () => {
+  const fetchCobrancas = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     try {
       const result = await cobrancasApi.getAll({
@@ -107,16 +67,18 @@ const FinanceiroPage: React.FC = () => {
         page,
         size: PAGE_SIZE,
       });
-      setData(result);
+      if (!signal?.aborted) setData(result);
     } catch {
-      setData(null);
+      if (!signal?.aborted) setData(null);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [statusFilter, monthFilter, yearFilter, page]);
 
   useEffect(() => {
-    fetchCobrancas();
+    const controller = new AbortController();
+    fetchCobrancas(controller.signal);
+    return () => controller.abort();
   }, [fetchCobrancas]);
 
   const totalPages = data?.totalPages ?? 0;

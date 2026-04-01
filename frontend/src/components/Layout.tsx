@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { Menu, Bell, LogOut, ChevronDown } from 'lucide-react';
 import Sidebar from './Sidebar';
 import { useAuth } from '../contexts/AuthContext';
 import * as alertasApi from '../api/alertas';
+
+const POLLING_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
 
 const Layout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -12,12 +14,18 @@ const Layout: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
+  const fetchPendentes = useCallback(() => {
     alertasApi
       .getSummary()
       .then((summary) => setTotalPendentes(summary.totalPendentes))
       .catch(() => setTotalPendentes(0));
   }, []);
+
+  useEffect(() => {
+    fetchPendentes();
+    const interval = setInterval(fetchPendentes, POLLING_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [fetchPendentes]);
 
   const handleLogout = () => {
     logout();

@@ -75,6 +75,7 @@ const UsuarioList: React.FC = () => {
   };
 
   const handleSave = async () => {
+    if (saving) return;
     if (!validate()) return;
     setSaving(true);
     setSubmitError('');

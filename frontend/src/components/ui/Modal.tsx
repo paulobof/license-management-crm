@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { X } from 'lucide-react';
 
@@ -17,6 +17,9 @@ const sizeClasses = {
   lg: 'max-w-2xl',
 };
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 const Modal: React.FC<ModalProps> = ({
   isOpen,
   onClose,
@@ -25,15 +28,69 @@ const Modal: React.FC<ModalProps> = ({
   footer,
   size = 'md',
 }) => {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+
+  // Capture the element that triggered the modal opening
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    if (isOpen) {
+      triggerRef.current = document.activeElement as HTMLElement | null;
+    }
+  }, [isOpen]);
+
+  // Focus trap: keep Tab focus inside the modal
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
         onClose();
+        return;
       }
-    };
+
+      if (e.key !== 'Tab' || !dialogRef.current) return;
+
+      const focusableEls = dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+      if (focusableEls.length === 0) return;
+
+      const firstEl = focusableEls[0];
+      const lastEl = focusableEls[focusableEls.length - 1];
+
+      if (e.shiftKey) {
+        if (document.activeElement === firstEl) {
+          e.preventDefault();
+          lastEl.focus();
+        }
+      } else {
+        if (document.activeElement === lastEl) {
+          e.preventDefault();
+          firstEl.focus();
+        }
+      }
+    },
+    [isOpen, onClose]
+  );
+
+  useEffect(() => {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [handleKeyDown]);
+
+  // Move initial focus into modal when it opens
+  useEffect(() => {
+    if (isOpen && dialogRef.current) {
+      const focusableEls = dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+      if (focusableEls.length > 0) {
+        focusableEls[0].focus();
+      }
+    }
+  }, [isOpen]);
+
+  // Restore focus to trigger element when modal closes
+  useEffect(() => {
+    if (!isOpen && triggerRef.current) {
+      triggerRef.current.focus();
+      triggerRef.current = null;
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -56,6 +113,7 @@ const Modal: React.FC<ModalProps> = ({
         aria-hidden="true"
       />
       <div
+        ref={dialogRef}
         className={[
           'relative w-full bg-white border border-gray-200 rounded-xl shadow-2xl flex flex-col max-h-[90vh]',
           sizeClasses[size],

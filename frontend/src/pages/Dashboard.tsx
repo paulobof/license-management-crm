@@ -3,37 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Users, UserCheck, AlertTriangle, FileX } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getDashboardSummary } from '../api/documentos';
+import SummaryCard from '../components/ui/SummaryCard';
 import type { DashboardSummary } from '../types';
-
-interface SummaryCardProps {
-  title: string;
-  value: string | number;
-  icon: React.ReactNode;
-  iconBg: string;
-  borderColor: string;
-  subtitle?: string;
-  onClick?: () => void;
-}
-
-const SummaryCard: React.FC<SummaryCardProps> = ({ title, value, icon, iconBg, borderColor, subtitle, onClick }) => (
-  <div
-    className={[
-      'bg-white rounded-xl p-5 flex items-start gap-4 shadow-sm border-l-4',
-      borderColor,
-      onClick ? 'cursor-pointer hover:shadow-md transition-shadow duration-150' : '',
-    ].join(' ')}
-    onClick={onClick}
-  >
-    <div className={['w-11 h-11 rounded-xl flex items-center justify-center shrink-0', iconBg].join(' ')}>
-      {icon}
-    </div>
-    <div className="min-w-0">
-      <p className="text-sm text-gray-500 font-medium">{title}</p>
-      <p className="text-2xl font-bold text-gray-900 mt-0.5">{value}</p>
-      {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
-    </div>
-  </div>
-);
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
@@ -42,10 +13,12 @@ const Dashboard: React.FC = () => {
   const [loadingSummary, setLoadingSummary] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     getDashboardSummary()
-      .then((data) => setSummary(data))
-      .catch(() => setSummary(null))
-      .finally(() => setLoadingSummary(false));
+      .then((data) => { if (!cancelled) setSummary(data); })
+      .catch(() => { if (!cancelled) setSummary(null); })
+      .finally(() => { if (!cancelled) setLoadingSummary(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const displayValue = (val: number | undefined): string | number => {
