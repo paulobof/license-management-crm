@@ -24,11 +24,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -91,6 +94,9 @@ public class AlertaService {
         LocalDate today = LocalDate.now();
         LocalDate limite = today.plusDays(maxDias);
 
+        // IDs de documentos com snooze ativo — excluir da listagem
+        Set<Long> snoozedIds = new HashSet<>(alertaLogRepository.findSnoozedDocumentoIds(StatusEnvio.SNOOZED, today));
+
         // Fetch documents with dataValidade within the configured window (a_vencer) or already vencidos
         List<Documento> documentos = documentoRepository.findAll(
                 buildDocumentosVencendoSpec(today, limite),
@@ -98,6 +104,7 @@ public class AlertaService {
         ).getContent();
 
         return documentos.stream()
+                .filter(d -> !snoozedIds.contains(d.getId()))
                 .map(d -> toAlertaPendenteResponse(d, today))
                 .sorted(Comparator.comparing(AlertaPendenteResponse::getDataVencimento,
                         Comparator.nullsLast(Comparator.naturalOrder())))
@@ -216,22 +223,49 @@ public class AlertaService {
         LocalDate today = LocalDate.now();
         LocalDate limite = today.plusDays(maxDias);
 
+        // IDs de documentos com snooze ativo — não gerar alertas para eles
+        Set<Long> snoozedIds = new HashSet<>(alertaLogRepository.findSnoozedDocumentoIds(StatusEnvio.SNOOZED, today));
+
+        // Limites do dia para verificação de idempotência
+        LocalDateTime startOfDay = today.atStartOfDay();
+        LocalDateTime startOfNextDay = today.plusDays(1).atStartOfDay();
+
         List<Documento> documentos = documentoRepository.findAll(
                 buildDocumentosVencendoSpec(today, limite),
                 PageRequest.of(0, 100, Sort.by("dataValidade").ascending())
         ).getContent();
 
         int criados = 0;
+        int ignoradosSnooze = 0;
+        int ignoradosDuplicado = 0;
+
         for (Documento documento : documentos) {
             if (documento.getDataValidade() == null) {
                 continue;
             }
+
+            // Pular documentos com snooze ativo
+            if (snoozedIds.contains(documento.getId())) {
+                ignoradosSnooze++;
+                log.debug("Documento id={} ignorado (snooze ativo)", documento.getId());
+                continue;
+            }
+
             long diasRestantes = ChronoUnit.DAYS.between(today, documento.getDataValidade());
 
             boolean deveCriarAlerta = diasAntecedencia.stream()
                     .anyMatch(d -> d == diasRestantes);
 
             if (deveCriarAlerta) {
+                // Idempotência — verificar se já existe alerta para hoje
+                boolean jaExiste = alertaLogRepository.existsByDocumentoIdAndCreatedAtDate(
+                        documento.getId(), startOfDay, startOfNextDay);
+                if (jaExiste) {
+                    ignoradosDuplicado++;
+                    log.debug("Documento id={} já possui alerta para hoje; ignorando duplicata", documento.getId());
+                    continue;
+                }
+
                 String mensagem = buildMensagem(config.getTemplateEmail(), documento);
                 String destinatario = resolveDestinatario(documento);
 
@@ -249,7 +283,8 @@ public class AlertaService {
                 log.info("AlertaLog PENDENTE criado: documentoId={}, diasRestantes={}", documento.getId(), diasRestantes);
             }
         }
-        log.info("Processamento diário de alertas concluído: {} alerta(s) criado(s)", criados);
+        log.info("Processamento diário de alertas concluído: {} criado(s), {} ignorado(s) por snooze, {} ignorado(s) por duplicata",
+                criados, ignoradosSnooze, ignoradosDuplicado);
     }
 
     // -------------------------------------------------------------------------
