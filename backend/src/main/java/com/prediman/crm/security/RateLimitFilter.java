@@ -27,7 +27,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String path = request.getRequestURI();
 
-        if (!path.startsWith("/api/auth/")) {
+        if (!path.startsWith("/api/v1/auth/")) {
             filterChain.doFilter(request, response);
             return;
         }

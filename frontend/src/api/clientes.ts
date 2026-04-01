@@ -9,31 +9,31 @@ interface GetAllParams {
 }
 
 export const getAll = async (params: GetAllParams = {}): Promise<Page<Cliente>> => {
-  const response = await api.get<Page<Cliente>>('/api/clientes', { params });
+  const response = await api.get<Page<Cliente>>('/api/v1/clientes', { params });
   return response.data;
 };
 
 export const getById = async (id: number): Promise<Cliente> => {
-  const response = await api.get<Cliente>(`/api/clientes/${id}`);
+  const response = await api.get<Cliente>(`/api/v1/clientes/${id}`);
   return response.data;
 };
 
 export const create = async (data: Partial<Cliente>): Promise<Cliente> => {
-  const response = await api.post<Cliente>('/api/clientes', data);
+  const response = await api.post<Cliente>('/api/v1/clientes', data);
   return response.data;
 };
 
 export const update = async (id: number, data: Partial<Cliente>): Promise<Cliente> => {
-  const response = await api.put<Cliente>(`/api/clientes/${id}`, data);
+  const response = await api.put<Cliente>(`/api/v1/clientes/${id}`, data);
   return response.data;
 };
 
 export const remove = async (id: number): Promise<void> => {
-  await api.delete(`/api/clientes/${id}`);
+  await api.delete(`/api/v1/clientes/${id}`);
 };
 
 export const toggleStatus = async (id: number): Promise<Cliente> => {
-  const response = await api.patch<Cliente>(`/api/clientes/${id}/toggle-status`);
+  const response = await api.patch<Cliente>(`/api/v1/clientes/${id}/toggle-status`);
   return response.data;
 };
 
@@ -47,6 +47,6 @@ interface CepResponse {
 }
 
 export const searchCep = async (cep: string): Promise<CepResponse> => {
-  const response = await api.get<CepResponse>(`/api/cep/${cep}`);
+  const response = await api.get<CepResponse>(`/api/v1/cep/${cep}`);
   return response.data;
 };

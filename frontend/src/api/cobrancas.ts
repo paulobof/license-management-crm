@@ -17,27 +17,27 @@ interface RegistrarPagamentoData {
 }
 
 export const getAll = async (params: GetAllParams = {}): Promise<Page<Cobranca>> => {
-  const response = await api.get<Page<Cobranca>>('/api/cobrancas', { params });
+  const response = await api.get<Page<Cobranca>>('/api/v1/cobrancas', { params });
   return response.data;
 };
 
 export const getById = async (id: number): Promise<Cobranca> => {
-  const response = await api.get<Cobranca>(`/api/cobrancas/${id}`);
+  const response = await api.get<Cobranca>(`/api/v1/cobrancas/${id}`);
   return response.data;
 };
 
 export const getByContratoId = async (contratoId: number): Promise<Cobranca[]> => {
-  const response = await api.get<Cobranca[]>(`/api/contratos/${contratoId}/cobrancas`);
+  const response = await api.get<Cobranca[]>(`/api/v1/contratos/${contratoId}/cobrancas`);
   return response.data;
 };
 
 export const create = async (data: Partial<Cobranca>): Promise<Cobranca> => {
-  const response = await api.post<Cobranca>('/api/cobrancas', data);
+  const response = await api.post<Cobranca>('/api/v1/cobrancas', data);
   return response.data;
 };
 
 export const update = async (id: number, data: Partial<Cobranca>): Promise<Cobranca> => {
-  const response = await api.put<Cobranca>(`/api/cobrancas/${id}`, data);
+  const response = await api.put<Cobranca>(`/api/v1/cobrancas/${id}`, data);
   return response.data;
 };
 
@@ -45,15 +45,15 @@ export const registrarPagamento = async (
   id: number,
   data: RegistrarPagamentoData
 ): Promise<Cobranca> => {
-  const response = await api.patch<Cobranca>(`/api/cobrancas/${id}/pagar`, data);
+  const response = await api.patch<Cobranca>(`/api/v1/cobrancas/${id}/pagar`, data);
   return response.data;
 };
 
 export const remove = async (id: number): Promise<void> => {
-  await api.delete(`/api/cobrancas/${id}`);
+  await api.delete(`/api/v1/cobrancas/${id}`);
 };
 
 export const getFinanceiroSummary = async (): Promise<FinanceiroSummary> => {
-  const response = await api.get<FinanceiroSummary>('/api/financeiro/summary');
+  const response = await api.get<FinanceiroSummary>('/api/v1/financeiro/summary');
   return response.data;
 };
