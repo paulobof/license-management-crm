@@ -73,7 +73,8 @@ public class Documento {
         if (dataValidade.isBefore(today)) {
             return StatusDocumento.VENCIDO;
         }
-        if (dataValidade.isBefore(today.plusDays(31)) || dataValidade.isEqual(today.plusDays(31))) {
+        if (dataValidade.isBefore(today.plusDays(DocumentoConstants.DIAS_ALERTA_VENCIMENTO))
+                || dataValidade.isEqual(today.plusDays(DocumentoConstants.DIAS_ALERTA_VENCIMENTO))) {
             return StatusDocumento.A_VENCER;
         }
         return StatusDocumento.VALIDO;

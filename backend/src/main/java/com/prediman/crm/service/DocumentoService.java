@@ -6,6 +6,7 @@ import com.prediman.crm.dto.DocumentoResponse;
 import com.prediman.crm.exception.ResourceNotFoundException;
 import com.prediman.crm.model.Cliente;
 import com.prediman.crm.model.Documento;
+import com.prediman.crm.model.DocumentoConstants;
 import com.prediman.crm.model.enums.CategoriaDocumento;
 import com.prediman.crm.model.enums.StatusCliente;
 import com.prediman.crm.repository.ClienteRepository;
@@ -32,6 +33,7 @@ public class DocumentoService {
 
     private final DocumentoRepository documentoRepository;
     private final ClienteRepository clienteRepository;
+    private final DocumentoMapper documentoMapper;
 
     @Transactional
     public DocumentoResponse create(DocumentoRequest request) {
@@ -54,7 +56,7 @@ public class DocumentoService {
 
         Documento saved = documentoRepository.save(documento);
         log.info("Documento criado com id: {}", saved.getId());
-        return toResponse(saved);
+        return documentoMapper.toResponse(saved);
     }
 
     @Transactional
@@ -80,19 +82,19 @@ public class DocumentoService {
 
         Documento saved = documentoRepository.save(documento);
         log.info("Documento atualizado com id: {}", saved.getId());
-        return toResponse(saved);
+        return documentoMapper.toResponse(saved);
     }
 
     @Transactional(readOnly = true)
     public DocumentoResponse findById(Long id) {
-        return toResponse(findDocumentoById(id));
+        return documentoMapper.toResponse(findDocumentoById(id));
     }
 
     @Transactional(readOnly = true)
     public List<DocumentoResponse> findByClienteId(Long clienteId) {
         return documentoRepository.findTop500ByClienteIdOrderByDataValidadeAsc(clienteId)
                 .stream()
-                .map(this::toResponse)
+                .map(documentoMapper::toResponse)
                 .collect(Collectors.toList());
     }
 
@@ -100,7 +102,7 @@ public class DocumentoService {
     public Page<DocumentoResponse> findAll(String search, CategoriaDocumento categoria,
                                            String status, Long clienteId, Pageable pageable) {
         Specification<Documento> spec = buildSpecification(search, categoria, status, clienteId);
-        return documentoRepository.findAll(spec, pageable).map(this::toResponse);
+        return documentoRepository.findAll(spec, pageable).map(documentoMapper::toResponse);
     }
 
     @Transactional
@@ -115,7 +117,7 @@ public class DocumentoService {
         long totalClientes = clienteRepository.count();
         long clientesAtivos = clienteRepository.countByStatus(StatusCliente.ATIVO);
         LocalDate today = LocalDate.now();
-        long documentosAVencer = documentoRepository.countAVencer(today, today.plusDays(30));
+        long documentosAVencer = documentoRepository.countAVencer(today, today.plusDays(DocumentoConstants.DIAS_ALERTA_VENCIMENTO));
         long documentosVencidos = documentoRepository.countVencidos(today);
 
         return DashboardSummaryResponse.builder()
@@ -153,13 +155,13 @@ public class DocumentoService {
                 LocalDate today = LocalDate.now();
                 switch (status.toUpperCase()) {
                     case "A_VENCER" -> predicates.add(
-                            cb.between(root.get("dataValidade"), today, today.plusDays(30))
+                            cb.between(root.get("dataValidade"), today, today.plusDays(DocumentoConstants.DIAS_ALERTA_VENCIMENTO))
                     );
                     case "VENCIDO" -> predicates.add(
                             cb.lessThan(root.get("dataValidade"), today)
                     );
                     case "VALIDO" -> predicates.add(
-                            cb.greaterThan(root.get("dataValidade"), today.plusDays(30))
+                            cb.greaterThan(root.get("dataValidade"), today.plusDays(DocumentoConstants.DIAS_ALERTA_VENCIMENTO))
                     );
                     case "SEM_VALIDADE" -> predicates.add(
                             cb.isNull(root.get("dataValidade"))
@@ -172,24 +174,4 @@ public class DocumentoService {
         };
     }
 
-    private DocumentoResponse toResponse(Documento documento) {
-        return DocumentoResponse.builder()
-                .id(documento.getId())
-                .nome(documento.getNome())
-                .categoria(documento.getCategoria())
-                .dataEmissao(documento.getDataEmissao())
-                .dataValidade(documento.getDataValidade())
-                .revisao(documento.getRevisao())
-                .observacoes(documento.getObservacoes())
-                .googleDriveFileId(documento.getGoogleDriveFileId())
-                .googleDriveUrl(documento.getGoogleDriveUrl())
-                .tamanhoBytes(documento.getTamanhoBytes())
-                .mimeType(documento.getMimeType())
-                .statusCalculado(documento.getStatusCalculado())
-                .clienteId(documento.getCliente().getId())
-                .clienteNome(documento.getCliente().getRazaoSocial())
-                .createdAt(documento.getCreatedAt())
-                .updatedAt(documento.getUpdatedAt())
-                .build();
-    }
 }

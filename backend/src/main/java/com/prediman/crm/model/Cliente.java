@@ -79,7 +79,7 @@ public class Cliente {
     @Builder.Default
     private List<Documento> documentos = new ArrayList<>();
 
-    @OneToMany(mappedBy = "cliente", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "cliente", cascade = {CascadeType.PERSIST, CascadeType.MERGE}, orphanRemoval = false)
     @Builder.Default
     private List<Contrato> contratos = new ArrayList<>();
 

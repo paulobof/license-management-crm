@@ -32,6 +32,7 @@ public class CobrancaService {
 
     private final CobrancaRepository cobrancaRepository;
     private final ContratoRepository contratoRepository;
+    private final CobrancaMapper cobrancaMapper;
 
     @Transactional
     public CobrancaResponse create(CobrancaRequest request) {
@@ -46,12 +47,12 @@ public class CobrancaService {
                 .dataPagamento(request.getDataPagamento())
                 .formaPagamento(request.getFormaPagamento())
                 .comprovanteDriveId(request.getComprovanteDriveId())
-                .status(request.getStatus() != null ? request.getStatus() : StatusCobranca.PENDENTE)
+                .status(StatusCobranca.PENDENTE)
                 .build();
 
         Cobranca saved = cobrancaRepository.save(cobranca);
         log.info("Cobrança criada com id: {}", saved.getId());
-        return toResponse(saved);
+        return cobrancaMapper.toResponse(saved);
     }
 
     @Transactional
@@ -70,25 +71,22 @@ public class CobrancaService {
         cobranca.setDataPagamento(request.getDataPagamento());
         cobranca.setFormaPagamento(request.getFormaPagamento());
         cobranca.setComprovanteDriveId(request.getComprovanteDriveId());
-        if (request.getStatus() != null) {
-            cobranca.setStatus(request.getStatus());
-        }
 
         Cobranca saved = cobrancaRepository.save(cobranca);
         log.info("Cobrança atualizada com id: {}", saved.getId());
-        return toResponse(saved);
+        return cobrancaMapper.toResponse(saved);
     }
 
     @Transactional(readOnly = true)
     public CobrancaResponse findById(Long id) {
-        return toResponse(findCobrancaById(id));
+        return cobrancaMapper.toResponse(findCobrancaById(id));
     }
 
     @Transactional(readOnly = true)
     public List<CobrancaResponse> findByContratoId(Long contratoId) {
         return cobrancaRepository.findTop500ByContratoId(contratoId)
                 .stream()
-                .map(this::toResponse)
+                .map(cobrancaMapper::toResponse)
                 .collect(Collectors.toList());
     }
 
@@ -96,7 +94,7 @@ public class CobrancaService {
     public Page<CobrancaResponse> findAll(Long contratoId, StatusCobranca status,
                                           Integer month, Integer year, Pageable pageable) {
         Specification<Cobranca> spec = buildSpecification(contratoId, status, month, year);
-        return cobrancaRepository.findAll(spec, pageable).map(this::toResponse);
+        return cobrancaRepository.findAll(spec, pageable).map(cobrancaMapper::toResponse);
     }
 
     @Transactional
@@ -119,7 +117,7 @@ public class CobrancaService {
 
         Cobranca saved = cobrancaRepository.save(cobranca);
         log.info("Pagamento registrado para cobrança id: {}", saved.getId());
-        return toResponse(saved);
+        return cobrancaMapper.toResponse(saved);
     }
 
     @Transactional
@@ -145,7 +143,7 @@ public class CobrancaService {
         BigDecimal emAtraso = cobrancaRepository.sumValorEsperadoByStatusAndVencimentoBefore(
                 StatusCobranca.PENDENTE, today);
 
-        BigDecimal vencendo7dias = cobrancaRepository.sumValorEsperadoByVencimentoBetween(
+        BigDecimal vencendo7dias = cobrancaRepository.sumValorEsperadoByStatusAndVencimentoBetween(
                 StatusCobranca.PENDENTE, today, sete);
 
         return FinanceiroSummaryResponse.builder()
@@ -188,20 +186,4 @@ public class CobrancaService {
         };
     }
 
-    CobrancaResponse toResponse(Cobranca cobranca) {
-        return CobrancaResponse.builder()
-                .id(cobranca.getId())
-                .valorEsperado(cobranca.getValorEsperado())
-                .valorRecebido(cobranca.getValorRecebido())
-                .dataVencimento(cobranca.getDataVencimento())
-                .dataPagamento(cobranca.getDataPagamento())
-                .formaPagamento(cobranca.getFormaPagamento())
-                .comprovanteDriveId(cobranca.getComprovanteDriveId())
-                .status(cobranca.getStatus())
-                .statusCalculado(cobranca.getStatusCalculado())
-                .contratoId(cobranca.getContrato().getId())
-                .createdAt(cobranca.getCreatedAt())
-                .updatedAt(cobranca.getUpdatedAt())
-                .build();
-    }
 }

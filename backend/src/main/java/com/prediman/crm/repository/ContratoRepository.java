@@ -9,12 +9,16 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
+import com.prediman.crm.model.enums.StatusContrato;
+
 import java.util.List;
 
 @Repository
 public interface ContratoRepository extends JpaRepository<Contrato, Long>, JpaSpecificationExecutor<Contrato> {
 
     List<Contrato> findTop500ByClienteId(Long clienteId);
+
+    boolean existsByClienteIdAndStatus(Long clienteId, StatusContrato status);
 
     @Override
     @EntityGraph(attributePaths = {"cliente", "cobrancas"})

@@ -1,6 +1,5 @@
 package com.prediman.crm.dto;
 
-import com.prediman.crm.model.enums.StatusCobranca;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -29,8 +28,6 @@ public class CobrancaRequest {
     private String formaPagamento;
 
     private String comprovanteDriveId;
-
-    private StatusCobranca status;
 
     @NotNull(message = "Contrato é obrigatório")
     private Long contratoId;

@@ -4,6 +4,8 @@ import com.prediman.crm.dto.*;
 import com.prediman.crm.model.enums.StatusEnvio;
 import com.prediman.crm.model.enums.TipoAlerta;
 import com.prediman.crm.service.AlertaService;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -11,13 +13,15 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/alertas")
+@RequestMapping("/api/v1/alertas")
 @RequiredArgsConstructor
+@Validated
 public class AlertaController {
 
     private final AlertaService alertaService;
@@ -84,7 +88,7 @@ public class AlertaController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<AlertaLogResponse> snooze(
             @PathVariable Long documentoId,
-            @RequestParam(defaultValue = "7") int dias) {
+            @RequestParam(defaultValue = "7") @Min(1) @Max(90) int dias) {
         return ResponseEntity.ok(alertaService.snoozeAlerta(documentoId, dias));
     }
 

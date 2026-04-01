@@ -8,8 +8,12 @@ import com.prediman.crm.model.Cliente;
 import com.prediman.crm.model.Contato;
 import com.prediman.crm.model.Endereco;
 import com.prediman.crm.model.enums.StatusCliente;
+import com.prediman.crm.model.enums.StatusCobranca;
+import com.prediman.crm.model.enums.StatusContrato;
 import com.prediman.crm.model.enums.TipoPessoa;
 import com.prediman.crm.repository.ClienteRepository;
+import com.prediman.crm.repository.CobrancaRepository;
+import com.prediman.crm.repository.ContratoRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +33,8 @@ import java.util.List;
 public class ClienteService {
 
     private final ClienteRepository clienteRepository;
+    private final ContratoRepository contratoRepository;
+    private final CobrancaRepository cobrancaRepository;
     private final ClienteMapper clienteMapper;
 
     @Transactional
@@ -113,6 +119,20 @@ public class ClienteService {
     @Transactional
     public void delete(Long id) {
         Cliente cliente = findClienteById(id);
+
+        boolean temContratosAtivos = cliente.getContratos().stream()
+                .anyMatch(c -> c.getStatus() == StatusContrato.ATIVO);
+        if (temContratosAtivos) {
+            throw new BusinessException("Não é possível excluir cliente com contratos ativos");
+        }
+
+        boolean temCobrancasPagas = cliente.getContratos().stream()
+                .flatMap(c -> c.getCobrancas().stream())
+                .anyMatch(cob -> cob.getStatus() == StatusCobranca.PAGO);
+        if (temCobrancasPagas) {
+            throw new BusinessException("Não é possível excluir cliente com cobranças pagas");
+        }
+
         clienteRepository.delete(cliente);
         log.info("Cliente excluído com id: {}", id);
     }

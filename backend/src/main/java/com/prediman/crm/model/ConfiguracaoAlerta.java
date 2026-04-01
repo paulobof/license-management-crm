@@ -11,14 +11,17 @@ import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "configuracao_alerta")
-@Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class ConfiguracaoAlerta {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @EqualsAndHashCode.Include
     private Long id;
 
     /**

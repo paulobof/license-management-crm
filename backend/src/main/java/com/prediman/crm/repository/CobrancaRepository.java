@@ -16,6 +16,10 @@ public interface CobrancaRepository extends JpaRepository<Cobranca, Long>, JpaSp
 
     List<Cobranca> findTop500ByContratoId(Long contratoId);
 
+    @Query("SELECT CASE WHEN COUNT(c) > 0 THEN true ELSE false END FROM Cobranca c " +
+           "WHERE c.contrato.cliente.id = :clienteId AND c.status = :status")
+    boolean existsByClienteIdAndStatus(@Param("clienteId") Long clienteId, @Param("status") StatusCobranca status);
+
     boolean existsByContratoIdAndDataVencimentoBetween(Long contratoId, LocalDate start, LocalDate end);
 
     @Query("SELECT COALESCE(SUM(c.valorEsperado), 0) FROM Cobranca c " +
@@ -38,10 +42,4 @@ public interface CobrancaRepository extends JpaRepository<Cobranca, Long>, JpaSp
             @Param("status") StatusCobranca status,
             @Param("date") LocalDate date);
 
-    @Query("SELECT COALESCE(SUM(c.valorEsperado), 0) FROM Cobranca c " +
-           "WHERE c.status = :status AND c.dataVencimento >= :start AND c.dataVencimento <= :end")
-    java.math.BigDecimal sumValorEsperadoByVencimentoBetween(
-            @Param("status") StatusCobranca status,
-            @Param("start") LocalDate start,
-            @Param("end") LocalDate end);
 }
