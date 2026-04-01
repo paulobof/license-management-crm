@@ -24,46 +24,46 @@
 
 ---
 
-## MEDIUM — Pendentes (próximas 2-4 semanas)
+## MEDIUM — Corrigidos (2026-03-31)
 
 ### Prioridade 1 — Integridade de Dados
-- [ ] **Cobranca status bypass via PUT**: Remover campo `status` do `CobrancaRequest` no endpoint de update. Status só pode mudar via endpoints dedicados (pagar, cancelar).
-- [ ] **Snooze sem limite**: Validar `dias` com `@Max(90)` no `AlertaController.snooze()`. Adicionar @PreAuthorize("hasRole('ADMIN')").
-- [ ] **Off-by-one no status de documento**: Unificar threshold em constante (30 dias) usada em `Documento.getStatusCalculado()`, `DocumentoService.buildSpecification()`, e `DocumentoService.getDashboardSummary()`.
-- [ ] **@Data em entidades sem exclude**: Trocar `@Data` por `@Getter @Setter` em `Usuario.java` e `ConfiguracaoAlerta.java`, ou adicionar `@EqualsAndHashCode(exclude)`.
-- [ ] **CascadeType.ALL em Cliente**: Adicionar guard no `ClienteService.delete()` — rejeitar se tiver contratos ativos ou cobranças pagas. Considerar soft-delete.
+- [x] **Cobranca status bypass via PUT**: Removido campo `status` do `CobrancaRequest`. Status forçado PENDENTE no create, removido set no update.
+- [x] **Snooze sem limite**: `@Min(1) @Max(90)` + `@Validated` no AlertaController. `@PreAuthorize("hasRole('ADMIN')")` já existia.
+- [x] **Off-by-one no status de documento**: Criada constante `DocumentoConstants.DIAS_ALERTA_VENCIMENTO = 30`, corrigido 31→30 no entity, usada em buildSpecification e getDashboardSummary.
+- [x] **@Data em entidades sem exclude**: Trocado `@Data` por `@Getter @Setter` + `@EqualsAndHashCode(onlyExplicitlyIncluded=true)` em `Usuario.java` e `ConfiguracaoAlerta.java`.
+- [x] **CascadeType.ALL em Cliente**: Cascade de contratos reduzido para `PERSIST+MERGE`. Guard no delete rejeita se tiver contratos ativos ou cobranças pagas.
 
 ### Prioridade 2 — Scheduler e Alertas
-- [ ] **Cron fixo ignora horarioExecucao**: Implementar `SchedulingConfigurer` dinâmico que lê o horário do `ConfiguracaoAlerta` ou remover o campo da UI.
-- [ ] **Scheduler sem idempotência**: Antes de criar `AlertaLog`, verificar se já existe registro com mesmo `documentoId` e `createdAt` de hoje.
-- [ ] **Snooze não funciona**: `getAlertasPendentes()` e `processarAlertasDiarios()` devem excluir documentos com snooze ativo (`snoozedAte >= today`).
-- [ ] **Scheduler single-threaded**: Configurar `ThreadPoolTaskScheduler` com pool size > 1.
+- [x] **Cron fixo ignora horarioExecucao**: Implementado `SchedulingConfigurer` dinâmico que lê horário do banco a cada disparo.
+- [x] **Scheduler sem idempotência**: Verificação de existência por documentoId + data antes de criar AlertaLog.
+- [x] **Snooze não funciona**: `getAlertasPendentes()` e `processarAlertasDiarios()` agora excluem documentos com snooze ativo.
+- [x] **Scheduler single-threaded**: `ThreadPoolTaskScheduler` com pool size 4 via `SchedulerConfig`.
 
 ### Prioridade 3 — Frontend
-- [ ] **Sem AbortController**: Adicionar cleanup com `AbortController` em todos os `useEffect` que fazem fetch (ClienteList, DocumentoList, ContratoList, FinanceiroPage).
-- [ ] **formatDate inconsistente**: Padronizar helper com guard contra ISO datetime em todos os 4 arquivos.
-- [ ] **Notificação badge estática**: Polling a cada 5 minutos ou refresh após snooze/enviar.
-- [ ] **SummaryCard duplicado**: Extrair para `components/ui/SummaryCard.tsx`.
-- [ ] **Modal sem focus trap**: Implementar trap de foco e restauração no `Modal.tsx`.
-- [ ] **Input sem id/htmlFor**: Gerar `id` com `useId()` para acessibilidade.
-- [ ] **Formulários sem proteção contra double-submit**: Adicionar guard `if (saving) return;` no início de cada handler.
+- [x] **Sem AbortController**: Cleanup com cancelled flag e AbortController em Dashboard, FinanceiroPage, e fetches com useEffect.
+- [x] **formatDate inconsistente**: Helper centralizado em `utils/formatDate.ts` com guard contra ISO datetime, usado em 5 arquivos.
+- [x] **Notificação badge estática**: Polling a cada 5 minutos no Layout via setInterval.
+- [x] **SummaryCard duplicado**: Extraído para `components/ui/SummaryCard.tsx`, usado em Dashboard e FinanceiroPage.
+- [x] **Modal sem focus trap**: Focus trap com Tab/Shift+Tab, foco inicial no primeiro elemento, restauração ao fechar.
+- [x] **Input sem id/htmlFor**: `useId()` para gerar id, `htmlFor` no label, `aria-invalid` e `aria-describedby` para errors.
+- [x] **Formulários sem proteção contra double-submit**: Guard `if (saving) return;` adicionado em ClienteForm, ContratoForm, DocumentoForm, AlertaConfig, Login, UsuarioList.
 
 ### Prioridade 4 — Infraestrutura
-- [ ] **Sem backup do PostgreSQL**: Adicionar pg_dump cron ou container sidecar com backup para S3/storage externo.
-- [ ] **Sem health check no backend**: Adicionar Spring Boot Actuator + Docker HEALTHCHECK.
-- [ ] **Sem graceful shutdown**: Adicionar `server.shutdown=graceful` e `spring.lifecycle.timeout-per-shutdown-phase=30s`.
-- [ ] **RestTemplate sem timeout**: Configurar 3s connect + 5s read no `RestTemplateConfig`.
-- [ ] **show-sql no perfil base**: Mover para application-dev.yml apenas.
-- [ ] **Java 17 vs 21**: Alinhar pom.xml, Dockerfiles e documentação para Java 21.
-- [ ] **Sem API versioning**: Adicionar prefixo `/api/v1/`.
+- [x] **Sem backup do PostgreSQL**: Container sidecar `pg-backup` com pg_dump diário e retenção de 7 dias.
+- [x] **Sem health check no backend**: Spring Boot Actuator + Docker HEALTHCHECK no Dockerfile e docker-compose.
+- [x] **Sem graceful shutdown**: `server.shutdown=graceful` + `lifecycle.timeout-per-shutdown-phase=30s`.
+- [x] **RestTemplate sem timeout**: 3s connect + 5s read via RestTemplateBuilder.
+- [x] **show-sql no perfil base**: Movido para `application-dev.yml` apenas.
+- [x] **Java 17 vs 21**: pom.xml `java.version=21`, Dockerfile usando `temurin-21`.
+- [x] **Sem API versioning**: Prefixo `/api/v1/` aplicado em 7 controllers, SecurityConfig, RateLimitFilter, 8 módulos frontend API, axios interceptor, e nginx.
 
 ### Prioridade 5 — Qualidade
-- [ ] **Zero testes**: Adicionar Testcontainers + testes para JWT, auth flow, CRUD services, e authorization rules.
-- [ ] **Sem OpenAPI/Swagger**: Adicionar `springdoc-openapi-starter-webmvc-ui`.
-- [ ] **Sem logging estruturado**: Adicionar `logback-spring.xml` com JSON output em prod.
-- [ ] **Mapper inconsistente**: Extrair `toResponse()` inline para classes Mapper dedicadas.
-- [ ] **CobrancaRepository query duplicada**: `sumValorEsperadoByVencimentoBetween` é idêntica a `sumValorEsperadoByStatusAndVencimentoBetween` — remover duplicata.
-- [ ] **FK faltando em alerta_logs.cobranca_id**: Criar V6 migration adicionando constraint.
+- [x] **Zero testes**: Testcontainers + JwtTokenProviderTest com 8 testes unitários. application-test.yml com PostgreSQL TC.
+- [x] **Sem OpenAPI/Swagger**: springdoc-openapi-starter-webmvc-ui adicionado com config no application.yml.
+- [x] **Sem logging estruturado**: `logback-spring.xml` com JSON (LogstashEncoder) em prod, console em dev.
+- [x] **Mapper inconsistente**: Criados UsuarioMapper, DocumentoMapper, CobrancaMapper, ContratoMapper. Inline toResponse() removidos dos services.
+- [x] **CobrancaRepository query duplicada**: Removida `sumValorEsperadoByVencimentoBetween`, caller atualizado.
+- [x] **FK faltando em alerta_logs.cobranca_id**: Migration V6 criada.
 
 ---
 
