@@ -11,6 +11,7 @@ import com.prediman.crm.security.JwtTokenProvider;
 import com.prediman.crm.security.RateLimitFilter;
 import com.prediman.crm.security.UserDetailsServiceImpl;
 import com.prediman.crm.service.DocumentoService;
+import com.prediman.crm.service.GoogleDriveService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,6 +58,9 @@ class DocumentoControllerTest {
 
     @MockBean
     private RateLimitFilter rateLimitFilter;
+
+    @MockBean
+    private GoogleDriveService googleDriveService;
 
     private DocumentoResponse buildDocumentoResponse(Long id, String nome) {
         return DocumentoResponse.builder()

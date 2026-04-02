@@ -47,6 +47,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -65,6 +67,12 @@ class AlertaServiceTest {
 
     @Mock
     private DocumentoRepository documentoRepository;
+
+    @Mock
+    private EmailService emailService;
+
+    @Mock
+    private WhatsAppService whatsAppService;
 
     @InjectMocks
     private AlertaService alertaService;
@@ -990,5 +998,205 @@ class AlertaServiceTest {
         ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
         verify(alertaLogRepository).save(captor.capture());
         assertThat(captor.getValue().getMensagem()).contains("0");
+    }
+
+    // -------------------------------------------------------------------------
+    // processarEnvioPendentes — EMAIL
+    // -------------------------------------------------------------------------
+
+    @Test
+    void processarEnvioPendentes_emailEnviadoComSucesso() {
+        AlertaLog pendente = AlertaLog.builder()
+                .id(100L)
+                .canal(CanalAlerta.EMAIL)
+                .statusEnvio(StatusEnvio.PENDENTE)
+                .destinatario("user@test.com")
+                .mensagem("Alerta teste")
+                .build();
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findByStatusEnvioAndCanal(StatusEnvio.PENDENTE, CanalAlerta.EMAIL))
+                .thenReturn(List.of(pendente));
+        when(emailService.enviar("user@test.com", "Alerta de Vencimento — Prediman CRM", "Alerta teste"))
+                .thenReturn(true);
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        alertaService.processarEnvioPendentes();
+
+        ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
+        verify(alertaLogRepository, atLeastOnce()).save(captor.capture());
+        assertThat(captor.getValue().getStatusEnvio()).isEqualTo(StatusEnvio.ENVIADO);
+        assertThat(captor.getValue().getDataEnvio()).isNotNull();
+    }
+
+    @Test
+    void processarEnvioPendentes_emailComErro_marcaErro() {
+        AlertaLog pendente = AlertaLog.builder()
+                .id(101L)
+                .canal(CanalAlerta.EMAIL)
+                .statusEnvio(StatusEnvio.PENDENTE)
+                .destinatario("fail@test.com")
+                .mensagem("Alerta falha")
+                .build();
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findByStatusEnvioAndCanal(StatusEnvio.PENDENTE, CanalAlerta.EMAIL))
+                .thenReturn(List.of(pendente));
+        when(emailService.enviar(anyString(), anyString(), anyString())).thenReturn(false);
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        alertaService.processarEnvioPendentes();
+
+        ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
+        verify(alertaLogRepository, atLeastOnce()).save(captor.capture());
+        assertThat(captor.getValue().getStatusEnvio()).isEqualTo(StatusEnvio.ERRO);
+    }
+
+    @Test
+    void processarEnvioPendentes_emailDesativado_naoProcesa() {
+        defaultConfig.setEmailAtivo(false);
+        defaultConfig.setWhatsappAtivo(false);
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+
+        alertaService.processarEnvioPendentes();
+
+        verify(alertaLogRepository, never()).findByStatusEnvioAndCanal(any(), any());
+    }
+
+    // -------------------------------------------------------------------------
+    // processarEnvioPendentes — WHATSAPP
+    // -------------------------------------------------------------------------
+
+    @Test
+    void processarEnvioPendentes_whatsappEnviadoComSucesso() {
+        defaultConfig.setWhatsappAtivo(true);
+        AlertaLog pendente = AlertaLog.builder()
+                .id(102L)
+                .canal(CanalAlerta.WHATSAPP)
+                .statusEnvio(StatusEnvio.PENDENTE)
+                .destinatario("11999887766")
+                .mensagem("WhatsApp teste")
+                .build();
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findByStatusEnvioAndCanal(StatusEnvio.PENDENTE, CanalAlerta.EMAIL))
+                .thenReturn(List.of());
+        when(alertaLogRepository.findByStatusEnvioAndCanal(StatusEnvio.PENDENTE, CanalAlerta.WHATSAPP))
+                .thenReturn(List.of(pendente));
+        when(whatsAppService.enviar("11999887766", "WhatsApp teste")).thenReturn(true);
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        alertaService.processarEnvioPendentes();
+
+        ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
+        verify(alertaLogRepository, atLeastOnce()).save(captor.capture());
+        assertThat(captor.getValue().getStatusEnvio()).isEqualTo(StatusEnvio.ENVIADO);
+    }
+
+    @Test
+    void processarEnvioPendentes_whatsappComErro() {
+        defaultConfig.setWhatsappAtivo(true);
+        AlertaLog pendente = AlertaLog.builder()
+                .id(103L)
+                .canal(CanalAlerta.WHATSAPP)
+                .statusEnvio(StatusEnvio.PENDENTE)
+                .destinatario("11999887766")
+                .mensagem("WhatsApp falha")
+                .build();
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findByStatusEnvioAndCanal(StatusEnvio.PENDENTE, CanalAlerta.EMAIL))
+                .thenReturn(List.of());
+        when(alertaLogRepository.findByStatusEnvioAndCanal(StatusEnvio.PENDENTE, CanalAlerta.WHATSAPP))
+                .thenReturn(List.of(pendente));
+        when(whatsAppService.enviar(anyString(), anyString())).thenReturn(false);
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        alertaService.processarEnvioPendentes();
+
+        ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
+        verify(alertaLogRepository, atLeastOnce()).save(captor.capture());
+        assertThat(captor.getValue().getStatusEnvio()).isEqualTo(StatusEnvio.ERRO);
+    }
+
+    // -------------------------------------------------------------------------
+    // processarAlertasDiarios — creates both EMAIL and WHATSAPP when both active
+    // -------------------------------------------------------------------------
+
+    @Test
+    void processarAlertasDiarios_criaAlertaEmailEWhatsapp() {
+        defaultConfig.setEmailAtivo(true);
+        defaultConfig.setWhatsappAtivo(true);
+        defaultConfig.setTemplateWhatsapp("WA: {{documento}} vence em {{dias}} dias");
+
+        Contato contato = new Contato();
+        contato.setEmail("user@test.com");
+        contato.setWhatsapp("11999887766");
+
+        Cliente cliente = Cliente.builder()
+                .id(1L)
+                .razaoSocial("Empresa")
+                .contatos(List.of(contato))
+                .build();
+
+        LocalDate validade = LocalDate.now().plusDays(7);
+        Documento documento = Documento.builder()
+                .id(1L)
+                .nome("Doc")
+                .dataValidade(validade)
+                .cliente(cliente)
+                .build();
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedDocumentoIds(any(), any())).thenReturn(List.of());
+        when(documentoRepository.findAll(any(Specification.class), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of(documento)));
+        when(alertaLogRepository.existsByDocumentoIdAndCreatedAtDate(any(), any(), any())).thenReturn(false);
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        alertaService.processarAlertasDiarios();
+
+        ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
+        verify(alertaLogRepository, atLeast(2)).save(captor.capture());
+
+        List<AlertaLog> saved = captor.getAllValues();
+        assertThat(saved).extracting("canal").contains(CanalAlerta.EMAIL, CanalAlerta.WHATSAPP);
+    }
+
+    // -------------------------------------------------------------------------
+    // resolveDestinatarioWhatsapp
+    // -------------------------------------------------------------------------
+
+    @Test
+    void processarAlertasDiarios_whatsappSemContato_destinatarioNulo() {
+        defaultConfig.setEmailAtivo(false);
+        defaultConfig.setWhatsappAtivo(true);
+        defaultConfig.setTemplateWhatsapp("WA: {{documento}}");
+
+        Cliente cliente = Cliente.builder()
+                .id(1L)
+                .razaoSocial("Sem WA")
+                .contatos(List.of())
+                .build();
+
+        Documento documento = Documento.builder()
+                .id(1L)
+                .nome("Doc")
+                .dataValidade(LocalDate.now().plusDays(7))
+                .cliente(cliente)
+                .build();
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedDocumentoIds(any(), any())).thenReturn(List.of());
+        when(documentoRepository.findAll(any(Specification.class), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of(documento)));
+        when(alertaLogRepository.existsByDocumentoIdAndCreatedAtDate(any(), any(), any())).thenReturn(false);
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        alertaService.processarAlertasDiarios();
+
+        ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
+        verify(alertaLogRepository).save(captor.capture());
+        assertThat(captor.getValue().getDestinatario()).isNull();
     }
 }

@@ -42,6 +42,8 @@ public class AlertaService {
     private final ConfiguracaoAlertaRepository configuracaoAlertaRepository;
     private final AlertaLogRepository alertaLogRepository;
     private final DocumentoRepository documentoRepository;
+    private final EmailService emailService;
+    private final WhatsAppService whatsAppService;
 
     // -------------------------------------------------------------------------
     // Configuration
@@ -266,25 +268,99 @@ public class AlertaService {
                     continue;
                 }
 
-                String mensagem = buildMensagem(config.getTemplateEmail(), documento);
-                String destinatario = resolveDestinatario(documento);
+                // Criar alerta EMAIL
+                if (Boolean.TRUE.equals(config.getEmailAtivo())) {
+                    String mensagem = buildMensagem(config.getTemplateEmail(), documento);
+                    String destinatario = resolveDestinatario(documento);
 
-                AlertaLog alertaLog = AlertaLog.builder()
-                        .documento(documento)
-                        .tipo(TipoAlerta.DOCUMENTO)
-                        .canal(CanalAlerta.EMAIL)
-                        .destinatario(destinatario)
-                        .mensagem(mensagem)
-                        .statusEnvio(StatusEnvio.PENDENTE)
-                        .build();
+                    AlertaLog alertaEmail = AlertaLog.builder()
+                            .documento(documento)
+                            .tipo(TipoAlerta.DOCUMENTO)
+                            .canal(CanalAlerta.EMAIL)
+                            .destinatario(destinatario)
+                            .mensagem(mensagem)
+                            .statusEnvio(StatusEnvio.PENDENTE)
+                            .build();
 
-                alertaLogRepository.save(alertaLog);
-                criados++;
+                    alertaLogRepository.save(alertaEmail);
+                    criados++;
+                }
+
+                // Criar alerta WHATSAPP
+                if (Boolean.TRUE.equals(config.getWhatsappAtivo())) {
+                    String mensagemWa = buildMensagem(config.getTemplateWhatsapp(), documento);
+                    String destinatarioWa = resolveDestinatarioWhatsapp(documento);
+
+                    AlertaLog alertaWa = AlertaLog.builder()
+                            .documento(documento)
+                            .tipo(TipoAlerta.DOCUMENTO)
+                            .canal(CanalAlerta.WHATSAPP)
+                            .destinatario(destinatarioWa)
+                            .mensagem(mensagemWa)
+                            .statusEnvio(StatusEnvio.PENDENTE)
+                            .build();
+
+                    alertaLogRepository.save(alertaWa);
+                    criados++;
+                }
+
                 log.info("AlertaLog PENDENTE criado: documentoId={}, diasRestantes={}", documento.getId(), diasRestantes);
             }
         }
         log.info("Processamento diário de alertas concluído: {} criado(s), {} ignorado(s) por snooze, {} ignorado(s) por duplicata",
                 criados, ignoradosSnooze, ignoradosDuplicado);
+    }
+
+    // -------------------------------------------------------------------------
+    // Send pending alerts (called by scheduler after creating PENDENTE records)
+    // -------------------------------------------------------------------------
+
+    @Transactional
+    public void processarEnvioPendentes() {
+        ConfiguracaoAlerta config = loadConfig();
+
+        // Processar e-mails pendentes
+        if (Boolean.TRUE.equals(config.getEmailAtivo())) {
+            List<AlertaLog> emailPendentes = alertaLogRepository
+                    .findByStatusEnvioAndCanal(StatusEnvio.PENDENTE, CanalAlerta.EMAIL);
+
+            int enviados = 0, erros = 0;
+            for (AlertaLog alerta : emailPendentes) {
+                boolean sucesso = emailService.enviar(
+                        alerta.getDestinatario(),
+                        "Alerta de Vencimento — Prediman CRM",
+                        alerta.getMensagem());
+
+                alerta.setStatusEnvio(sucesso ? StatusEnvio.ENVIADO : StatusEnvio.ERRO);
+                alerta.setDataEnvio(LocalDateTime.now());
+                alertaLogRepository.save(alerta);
+
+                if (sucesso) enviados++;
+                else erros++;
+            }
+            log.info("Envio de e-mails: {} enviado(s), {} erro(s)", enviados, erros);
+        }
+
+        // Processar WhatsApp pendentes
+        if (Boolean.TRUE.equals(config.getWhatsappAtivo())) {
+            List<AlertaLog> whatsappPendentes = alertaLogRepository
+                    .findByStatusEnvioAndCanal(StatusEnvio.PENDENTE, CanalAlerta.WHATSAPP);
+
+            int enviados = 0, erros = 0;
+            for (AlertaLog alerta : whatsappPendentes) {
+                boolean sucesso = whatsAppService.enviar(
+                        alerta.getDestinatario(),
+                        alerta.getMensagem());
+
+                alerta.setStatusEnvio(sucesso ? StatusEnvio.ENVIADO : StatusEnvio.ERRO);
+                alerta.setDataEnvio(LocalDateTime.now());
+                alertaLogRepository.save(alerta);
+
+                if (sucesso) enviados++;
+                else erros++;
+            }
+            log.info("Envio de WhatsApp: {} enviado(s), {} erro(s)", enviados, erros);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -348,6 +424,17 @@ public class AlertaService {
         return documento.getCliente().getContatos().stream()
                 .filter(c -> c.getEmail() != null && !c.getEmail().isBlank())
                 .map(c -> c.getEmail())
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String resolveDestinatarioWhatsapp(Documento documento) {
+        if (documento.getCliente() == null || documento.getCliente().getContatos() == null) {
+            return null;
+        }
+        return documento.getCliente().getContatos().stream()
+                .filter(c -> c.getWhatsapp() != null && !c.getWhatsapp().isBlank())
+                .map(c -> c.getWhatsapp())
                 .findFirst()
                 .orElse(null);
     }

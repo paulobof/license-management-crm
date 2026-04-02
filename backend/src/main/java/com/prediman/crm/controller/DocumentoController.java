@@ -5,25 +5,32 @@ import com.prediman.crm.dto.DocumentoRequest;
 import com.prediman.crm.dto.DocumentoResponse;
 import com.prediman.crm.model.enums.CategoriaDocumento;
 import com.prediman.crm.service.DocumentoService;
+import com.prediman.crm.service.GoogleDriveService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
+@Slf4j
 public class DocumentoController {
 
     private final DocumentoService documentoService;
+    private final GoogleDriveService googleDriveService;
 
     @GetMapping("/documentos")
     public ResponseEntity<Page<DocumentoResponse>> findAll(
@@ -51,6 +58,33 @@ public class DocumentoController {
     @PostMapping("/documentos")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<DocumentoResponse> create(@Valid @RequestBody DocumentoRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(documentoService.create(request));
+    }
+
+    @PostMapping(value = "/documentos/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<DocumentoResponse> upload(
+            @RequestPart("file") MultipartFile file,
+            @RequestPart("data") @Valid DocumentoRequest request) throws IOException {
+
+        request.setMimeType(file.getContentType());
+        request.setTamanhoBytes(file.getSize());
+
+        if (googleDriveService.isEnabled()) {
+            GoogleDriveService.GoogleDriveResult result = googleDriveService.upload(
+                    file.getOriginalFilename(),
+                    file.getContentType(),
+                    file.getBytes(),
+                    null);
+
+            if (result != null) {
+                request.setGoogleDriveFileId(result.getFileId());
+                request.setGoogleDriveUrl(result.getWebViewLink());
+            }
+        } else {
+            log.warn("Google Drive desabilitado; documento criado apenas com metadados");
+        }
+
         return ResponseEntity.status(HttpStatus.CREATED).body(documentoService.create(request));
     }
 

@@ -47,6 +47,7 @@ public class AlertaScheduler implements SchedulingConfigurer {
         log.info("Iniciando processamento diário de alertas de vencimento...");
         try {
             alertaService.processarAlertasDiarios();
+            alertaService.processarEnvioPendentes();
         } catch (Exception e) {
             log.error("Erro ao processar alertas diários: {}", e.getMessage(), e);
         }

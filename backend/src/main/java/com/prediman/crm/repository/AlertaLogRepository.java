@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import com.prediman.crm.model.enums.CanalAlerta;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -18,6 +20,8 @@ public interface AlertaLogRepository extends JpaRepository<AlertaLog, Long>, Jpa
     long countByStatusEnvio(StatusEnvio statusEnvio);
 
     List<AlertaLog> findByDocumentoIdOrderByCreatedAtDesc(Long documentoId);
+
+    List<AlertaLog> findByStatusEnvioAndCanal(StatusEnvio statusEnvio, CanalAlerta canal);
 
     /**
      * Verifica se já existe um AlertaLog para o documento na data informada (idempotência).
