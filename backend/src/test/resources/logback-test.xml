@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Configuracao de log dos testes.
+
+    O logback-spring.xml de producao so declara appenders dentro de
+    <springProfile name="dev"> e <springProfile name="prod">. Como os testes rodam
+    com o perfil "test", o root logger ficava sem nenhum appender e toda a saida de
+    log era descartada — inclusive stack traces de falhas, migrations do Flyway e o
+    ciclo de vida dos containers do Testcontainers.
+
+    Este arquivo tem precedencia sobre o logback-spring.xml e vale tambem para os
+    testes que nao sobem contexto Spring.
+-->
+<configuration>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Ruido de terceiros que nao ajuda a diagnosticar falha de teste -->
+    <logger name="com.github.dockerjava" level="WARN" />
+    <logger name="org.apache.hc" level="WARN" />
+    <logger name="org.hibernate.SQL" level="WARN" />
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE" />
+    </root>
+
+</configuration>
