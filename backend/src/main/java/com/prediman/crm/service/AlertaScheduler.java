@@ -40,13 +40,14 @@ public class AlertaScheduler implements SchedulingConfigurer {
     }
 
     /**
-     * Executa diariamente no horário configurado, verificando documentos próximos
-     * do vencimento e criando entradas AlertaLog com status PENDENTE.
+     * Executa diariamente no horário configurado, verificando documentos e cobranças
+     * próximos do vencimento (ou em atraso) e criando entradas AlertaLog com status PENDENTE.
      */
     public void executarAlertasDiarios() {
         log.info("Iniciando processamento diário de alertas de vencimento...");
         try {
             alertaService.processarAlertasDiarios();
+            alertaService.processarAlertasCobranca();
             alertaService.processarEnvioPendentes();
         } catch (Exception e) {
             log.error("Erro ao processar alertas diários: {}", e.getMessage(), e);

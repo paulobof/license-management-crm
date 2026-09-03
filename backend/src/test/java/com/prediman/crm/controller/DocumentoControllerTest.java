@@ -11,7 +11,6 @@ import com.prediman.crm.security.JwtTokenProvider;
 import com.prediman.crm.security.RateLimitFilter;
 import com.prediman.crm.security.UserDetailsServiceImpl;
 import com.prediman.crm.service.DocumentoService;
-import com.prediman.crm.service.GoogleDriveService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,13 +21,19 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.lang.reflect.Method;
 import java.time.LocalDate;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -58,9 +63,6 @@ class DocumentoControllerTest {
 
     @MockBean
     private RateLimitFilter rateLimitFilter;
-
-    @MockBean
-    private GoogleDriveService googleDriveService;
 
     private DocumentoResponse buildDocumentoResponse(Long id, String nome) {
         return DocumentoResponse.builder()
@@ -249,5 +251,86 @@ class DocumentoControllerTest {
                 .andExpect(jsonPath("$.clientesAtivos").value(80))
                 .andExpect(jsonPath("$.documentosAVencer").value(5))
                 .andExpect(jsonPath("$.documentosVencidos").value(2));
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /api/v1/documentos/upload
+    // -------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("POST /api/v1/documentos/upload — delega ao servico e retorna 201")
+    void upload_returns201() throws Exception {
+        DocumentoRequest request = DocumentoRequest.builder()
+                .nome("Alvará Municipal")
+                .clienteId(10L)
+                .dataEmissao(LocalDate.of(2024, 3, 5))
+                .build();
+        DocumentoResponse response = buildDocumentoResponse(1L, "Alvará Municipal");
+
+        MockMultipartFile arquivo = new MockMultipartFile(
+                "file", "alvara.pdf", MediaType.APPLICATION_PDF_VALUE, "conteudo".getBytes());
+        MockMultipartFile dados = new MockMultipartFile(
+                "data", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(request));
+
+        when(documentoService.upload(any(DocumentoRequest.class), any(MultipartFile.class)))
+                .thenReturn(response);
+
+        mockMvc.perform(multipart("/api/v1/documentos/upload").file(arquivo).file(dados))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.nome").value("Alvará Municipal"));
+
+        verify(documentoService).upload(any(DocumentoRequest.class), any(MultipartFile.class));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/documentos/upload — metadados invalidos retorna 400")
+    void upload_dadosInvalidos_returns400() throws Exception {
+        DocumentoRequest request = DocumentoRequest.builder()
+                .nome("")
+                .clienteId(null)
+                .build();
+
+        MockMultipartFile arquivo = new MockMultipartFile(
+                "file", "alvara.pdf", MediaType.APPLICATION_PDF_VALUE, "conteudo".getBytes());
+        MockMultipartFile dados = new MockMultipartFile(
+                "data", "", MediaType.APPLICATION_JSON_VALUE, objectMapper.writeValueAsBytes(request));
+
+        mockMvc.perform(multipart("/api/v1/documentos/upload").file(arquivo).file(dados))
+                .andExpect(status().isBadRequest());
+    }
+
+    // -------------------------------------------------------------------------
+    // Politica de papeis
+    // -------------------------------------------------------------------------
+
+    private String preAuthorizeDe(String metodo, Class<?>... parametros) throws NoSuchMethodException {
+        Method method = DocumentoController.class.getMethod(metodo, parametros);
+        PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
+        return preAuthorize == null ? null : preAuthorize.value();
+    }
+
+    @Test
+    @DisplayName("Escrita de documentos liberada para ADMIN e USUARIO")
+    void escrita_liberadaParaAdminEUsuario() throws Exception {
+        assertThat(preAuthorizeDe("create", DocumentoRequest.class))
+                .isEqualTo("hasAnyRole('ADMIN','USUARIO')");
+        assertThat(preAuthorizeDe("update", Long.class, DocumentoRequest.class))
+                .isEqualTo("hasAnyRole('ADMIN','USUARIO')");
+        assertThat(preAuthorizeDe("upload", MultipartFile.class, DocumentoRequest.class))
+                .isEqualTo("hasAnyRole('ADMIN','USUARIO')");
+    }
+
+    @Test
+    @DisplayName("Exclusao de documentos restrita a ADMIN")
+    void delete_restritoAdmin() throws Exception {
+        assertThat(preAuthorizeDe("delete", Long.class)).isEqualTo("hasRole('ADMIN')");
+    }
+
+    @Test
+    @DisplayName("Leitura de documentos nao exige papel especifico")
+    void leitura_semRestricaoDePapel() throws Exception {
+        assertThat(preAuthorizeDe("findById", Long.class)).isNull();
+        assertThat(preAuthorizeDe("findByCliente", Long.class)).isNull();
     }
 }

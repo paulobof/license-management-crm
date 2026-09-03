@@ -19,6 +19,18 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final int MAX_REQUESTS = 10;
     private static final long WINDOW_MS = 60_000; // 1 minute
 
+    /**
+     * O forgot-password dispara envio de e-mail e é o alvo natural de enumeração de contas
+     * e de spam; por isso recebe um limite bem mais restrito que o restante de /auth.
+     */
+    static final String FORGOT_PASSWORD_PATH = "/api/v1/auth/forgot-password";
+    private static final int FORGOT_PASSWORD_MAX_REQUESTS = 3;
+    private static final long FORGOT_PASSWORD_WINDOW_MS = 900_000; // 15 minutes
+
+    private static final String MSG_PADRAO = "Muitas tentativas. Aguarde 1 minuto.";
+    private static final String MSG_FORGOT_PASSWORD =
+            "Muitas solicitações de recuperação de senha. Aguarde 15 minutos antes de tentar novamente.";
+
     private final Map<String, RateLimitEntry> clients = new ConcurrentHashMap<>();
 
     @Override
@@ -32,20 +44,27 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return;
         }
 
+        boolean forgotPassword = FORGOT_PASSWORD_PATH.equals(path);
+        int maxRequests = forgotPassword ? FORGOT_PASSWORD_MAX_REQUESTS : MAX_REQUESTS;
+        long windowMs = forgotPassword ? FORGOT_PASSWORD_WINDOW_MS : WINDOW_MS;
+
         String clientIp = getClientIp(request);
-        RateLimitEntry entry = clients.compute(clientIp, (key, existing) -> {
+        String bucketKey = (forgotPassword ? "forgot-password|" : "auth|") + clientIp;
+
+        RateLimitEntry entry = clients.compute(bucketKey, (key, existing) -> {
             long now = System.currentTimeMillis();
-            if (existing == null || now - existing.windowStart > WINDOW_MS) {
+            if (existing == null || now - existing.windowStart > windowMs) {
                 return new RateLimitEntry(now, new AtomicInteger(1));
             }
             existing.count.incrementAndGet();
             return existing;
         });
 
-        if (entry.count.get() > MAX_REQUESTS) {
+        if (entry.count.get() > maxRequests) {
+            String mensagem = forgotPassword ? MSG_FORGOT_PASSWORD : MSG_PADRAO;
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setContentType("application/json");
-            response.getWriter().write("{\"message\":\"Muitas tentativas. Aguarde 1 minuto.\",\"status\":429}");
+            response.getWriter().write("{\"message\":\"" + mensagem + "\",\"status\":429}");
             return;
         }
 

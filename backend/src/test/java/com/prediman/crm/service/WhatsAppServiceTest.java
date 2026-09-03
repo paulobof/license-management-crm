@@ -122,4 +122,26 @@ class WhatsAppServiceTest {
                 any(HttpEntity.class),
                 eq(String.class));
     }
+
+    @Test
+    @DisplayName("enviar sem apiKey retorna false")
+    void enviar_semApiKey() {
+        configureService("https://evo.api.com", null, "inst");
+
+        boolean result = whatsAppService.enviar("11999887766", "Teste");
+
+        assertFalse(result);
+        verifyNoInteractions(restTemplate);
+    }
+
+    @Test
+    @DisplayName("enviar com apiKey em branco retorna false")
+    void enviar_apiKeyEmBranco() {
+        configureService("https://evo.api.com", "   ", "inst");
+
+        boolean result = whatsAppService.enviar("11999887766", "Teste");
+
+        assertFalse(result);
+        verifyNoInteractions(restTemplate);
+    }
 }

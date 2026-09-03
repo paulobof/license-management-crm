@@ -23,10 +23,22 @@ export const getSummary = async (): Promise<NotificacaoSummary> => {
   return response.data;
 };
 
-export const snooze = async (documentoId: number, dias: number): Promise<void> => {
-  await api.post(`/api/v1/alertas/${documentoId}/snooze`, { dias });
+/**
+ * O backend le "dias" e "tipo" como query params (nao no corpo), e o mesmo
+ * endpoint atende alertas de documento e de cobranca. O id refere-se ao
+ * documento ou a cobranca, conforme o tipo informado.
+ */
+export const snooze = async (
+  id: number,
+  dias: number,
+  tipo: AlertaPendente['tipo'] = 'DOCUMENTO'
+): Promise<void> => {
+  await api.post(`/api/v1/alertas/${id}/snooze`, null, { params: { dias, tipo } });
 };
 
-export const enviarManual = async (documentoId: number): Promise<void> => {
-  await api.post(`/api/v1/alertas/enviar-manual/${documentoId}`);
+export const enviarManual = async (
+  id: number,
+  tipo: AlertaPendente['tipo'] = 'DOCUMENTO'
+): Promise<void> => {
+  await api.post(`/api/v1/alertas/enviar-manual/${id}`, null, { params: { tipo } });
 };

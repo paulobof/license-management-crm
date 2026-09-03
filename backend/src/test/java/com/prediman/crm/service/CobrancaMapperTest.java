@@ -65,6 +65,8 @@ class CobrancaMapperTest {
                 () -> assertEquals(LocalDate.of(2024, 2, 8), response.getDataPagamento()),
                 () -> assertEquals("Boleto", response.getFormaPagamento()),
                 () -> assertEquals("comprovante-001", response.getComprovanteDriveId()),
+                () -> assertEquals("https://drive.google.com/file/d/comprovante-001/view",
+                        response.getComprovanteUrl()),
                 () -> assertEquals(StatusCobranca.PAGO, response.getStatus()),
                 () -> assertEquals(now, response.getCreatedAt()),
                 () -> assertEquals(now, response.getUpdatedAt())
@@ -118,5 +120,47 @@ class CobrancaMapperTest {
         CobrancaResponse response = mapper.toResponse(cobranca);
 
         assertEquals(StatusCobranca.PENDENTE, response.getStatusCalculado());
+    }
+
+    @Test
+    @DisplayName("toResponse nao gera comprovanteUrl quando nao ha comprovanteDriveId")
+    void toResponse_semComprovante_urlNula() {
+        Contrato contrato = contratoComId(10L);
+
+        Cobranca cobranca = Cobranca.builder()
+                .id(203L)
+                .valorEsperado(new BigDecimal("300.00"))
+                .dataVencimento(LocalDate.now().plusDays(5))
+                .comprovanteDriveId(null)
+                .status(StatusCobranca.PENDENTE)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .contrato(contrato)
+                .build();
+
+        CobrancaResponse response = mapper.toResponse(cobranca);
+
+        assertNull(response.getComprovanteUrl());
+    }
+
+    @Test
+    @DisplayName("toResponse trata comprovanteDriveId em branco como ausente")
+    void toResponse_comprovanteEmBranco_urlNula() {
+        Contrato contrato = contratoComId(11L);
+
+        Cobranca cobranca = Cobranca.builder()
+                .id(204L)
+                .valorEsperado(new BigDecimal("300.00"))
+                .dataVencimento(LocalDate.now().plusDays(5))
+                .comprovanteDriveId("   ")
+                .status(StatusCobranca.PENDENTE)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .contrato(contrato)
+                .build();
+
+        CobrancaResponse response = mapper.toResponse(cobranca);
+
+        assertNull(response.getComprovanteUrl());
     }
 }

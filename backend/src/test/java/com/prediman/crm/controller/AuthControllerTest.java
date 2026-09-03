@@ -1,9 +1,12 @@
 package com.prediman.crm.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.prediman.crm.dto.ForgotPasswordRequest;
 import com.prediman.crm.dto.LoginRequest;
 import com.prediman.crm.dto.LoginResponse;
 import com.prediman.crm.dto.RefreshRequest;
+import com.prediman.crm.dto.ResetPasswordRequest;
+import com.prediman.crm.exception.BusinessException;
 import com.prediman.crm.security.JwtAuthenticationFilter;
 import com.prediman.crm.security.JwtTokenProvider;
 import com.prediman.crm.security.RateLimitFilter;
@@ -19,6 +22,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -140,6 +146,127 @@ class AuthControllerTest {
         RefreshRequest request = new RefreshRequest("");
 
         mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /api/v1/auth/forgot-password
+    // -------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("POST /api/v1/auth/forgot-password — e-mail cadastrado retorna 200 com mensagem genérica")
+    void forgotPassword_emailCadastrado_returns200() throws Exception {
+        ForgotPasswordRequest request = new ForgotPasswordRequest("user@prediman.com");
+
+        mockMvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mensagem").value(AuthController.MENSAGEM_FORGOT_PASSWORD));
+
+        verify(authService).forgotPassword(any(ForgotPasswordRequest.class));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/forgot-password — e-mail inexistente também retorna 200 com a mesma mensagem")
+    void forgotPassword_emailInexistente_returns200MesmaMensagem() throws Exception {
+        // o serviço não sinaliza nada quando o e-mail não existe (evita enumeração de contas)
+        doNothing().when(authService).forgotPassword(any(ForgotPasswordRequest.class));
+        ForgotPasswordRequest request = new ForgotPasswordRequest("ninguem@prediman.com");
+
+        mockMvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mensagem").value(AuthController.MENSAGEM_FORGOT_PASSWORD));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/forgot-password — e-mail em branco retorna 400")
+    void forgotPassword_blankEmail_returns400() throws Exception {
+        ForgotPasswordRequest request = new ForgotPasswordRequest("");
+
+        mockMvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/forgot-password — e-mail inválido retorna 400")
+    void forgotPassword_invalidEmail_returns400() throws Exception {
+        ForgotPasswordRequest request = new ForgotPasswordRequest("nao-e-email");
+
+        mockMvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /api/v1/auth/reset-password
+    // -------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("POST /api/v1/auth/reset-password — token válido retorna 200")
+    void resetPassword_tokenValido_returns200() throws Exception {
+        ResetPasswordRequest request = new ResetPasswordRequest("token-opaco", "novaSenha123");
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mensagem").value(AuthController.MENSAGEM_RESET_PASSWORD));
+
+        verify(authService).resetPassword(any(ResetPasswordRequest.class));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/reset-password — token inválido/expirado retorna 422")
+    void resetPassword_tokenInvalido_returns422() throws Exception {
+        doThrow(new BusinessException("Link de redefinição expirado. Solicite uma nova recuperação de senha."))
+                .when(authService).resetPassword(any(ResetPasswordRequest.class));
+
+        ResetPasswordRequest request = new ResetPasswordRequest("token-expirado", "novaSenha123");
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.message").value(
+                        "Link de redefinição expirado. Solicite uma nova recuperação de senha."));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/reset-password — token em branco retorna 400")
+    void resetPassword_blankToken_returns400() throws Exception {
+        ResetPasswordRequest request = new ResetPasswordRequest("", "novaSenha123");
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/reset-password — senha curta retorna 400")
+    void resetPassword_senhaCurta_returns400() throws Exception {
+        ResetPasswordRequest request = new ResetPasswordRequest("token-opaco", "1234567");
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/reset-password — senha em branco retorna 400")
+    void resetPassword_senhaEmBranco_returns400() throws Exception {
+        ResetPasswordRequest request = new ResetPasswordRequest("token-opaco", "");
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());

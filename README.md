@@ -23,11 +23,13 @@ O Prediman CRM é um sistema integrado para gerenciar o ciclo de vida completo d
 - Busca e filtros avançados
 
 ### Gestão de Documentos
-- Upload e armazenamento de documentos
+- Upload de arquivos de até 30 MB pela interface web
 - Categorização de documentos (contratos, NF, RG, CNPJ, etc.)
 - Controle de validade com alertas automáticos
-- Integração com Google Drive para armazenamento em nuvem
-- Histórico de versões e rastreamento de alterações
+- Integração com Google Drive: pasta própria por cliente, criada automaticamente no formato `0042 - Nome do Cliente`
+- Nomenclatura automática dos arquivos no padrão `AAAA.MM.DD_NomeArquivo_RevXX`
+- Prévia do documento no navegador, sem download
+- Exportação do relatório geral para planilha (CSV)
 
 ### Sistema de Alertas
 - Alertas por email (SMTP Gmail)
@@ -36,20 +38,24 @@ O Prediman CRM é um sistema integrado para gerenciar o ciclo de vida completo d
 - Agendamento dinâmico com Scheduler
 - Histórico completo de alertas enviados
 - Função de snooze para adiar notificações
+- Lembretes de cobranças a vencer e em atraso, pelos mesmos canais
 
 ### Módulo Financeiro
 - Gestão de contratos com datas de vigência
 - Registro de cobranças com status
 - Parcelas automáticas com periodicidade configurável
-- Rastreamento de pagamentos
-- Relatórios financeiros
+- Geração automática das cobranças mensais (job no dia 1º, às 02:00), além do botão manual
+- Registro de pagamento com upload do comprovante para o Google Drive
+- Relatórios financeiros com exportação para planilha (CSV)
 
 ### Gestão de Usuários
 - Autenticação por JWT com refresh tokens
-- Dois perfis: ADMIN e USUARIO
+- Recuperação de senha por e-mail, com link de uso único válido por 2 horas
+- E-mail de boas-vindas com as credenciais iniciais ao criar um usuário
+- Dois perfis: ADMIN (acesso total) e USUARIO (consulta e edição, sem exclusões nem configurações sensíveis)
 - Controle de acesso baseado em roles
-- Senhas seguras com hashing
-- Rate limiting para proteção contra abuso
+- Senhas seguras com hashing bcrypt
+- Rate limiting para proteção contra abuso (limite dedicado e mais restrito na recuperação de senha)
 
 ## Pré-requisitos
 
@@ -167,19 +173,20 @@ Todas as configurações são gerenciadas através do arquivo `.env`. Copie `.en
 | `MAIL_USERNAME` | Usuário do email para envio de alertas | `seu-email@gmail.com` | Não* |
 | `MAIL_PASSWORD` | Senha ou App Password do email | `sua-app-password` | Não* |
 | `MAIL_FROM` | Email remetente dos alertas | `alertas@prediman.com.br` | Não |
-| `GOOGLE_DRIVE_CLIENT_ID` | Client ID da OAuth2 do Google Drive | (Obtido no Google Cloud Console) | Não** |
-| `GOOGLE_DRIVE_CLIENT_SECRET` | Client Secret da OAuth2 | (Obtido no Google Cloud Console) | Não** |
-| `GOOGLE_DRIVE_REDIRECT_URI` | URI de redirecionamento OAuth2 | `http://localhost:8080/api/oauth2/callback/google` | Não** |
+| `GOOGLE_DRIVE_ENABLED` | Liga a integração com o Google Drive | `true` | Não** |
+| `GOOGLE_DRIVE_CREDENTIALS_PATH` | Caminho do JSON da service account | `/app/credentials/drive.json` | Não** |
 | `GOOGLE_DRIVE_ROOT_FOLDER_ID` | ID da pasta raiz no Google Drive | (Obtido no Google Drive) | Não** |
 | `EVOLUTION_API_URL` | URL base da Evolution API | `https://api.evolution.com.br` | Não*** |
 | `EVOLUTION_API_KEY` | Chave de API da Evolution | (Obtida na plataforma) | Não*** |
 | `EVOLUTION_INSTANCE_NAME` | Nome da instância WhatsApp | `prediman` | Não*** |
 | `CORS_ALLOWED_ORIGINS` | Origens CORS permitidas (separadas por vírgula) | `https://prediman.paulobof.com.br` | Não |
+| `APP_BASE_URL` | URL pública do frontend, usada no link do e-mail de redefinição de senha | `https://prediman.paulobof.com.br` | Não**** |
 
 **Notas:**
 - *: Obrigatória apenas se alertas por email forem ativados
 - **: Obrigatória apenas se gestão de documentos no Google Drive for ativada
 - ***: Obrigatória apenas se alertas por WhatsApp forem ativados
+- ****: Sem ela o link do e-mail de redefinição aponta para `http://localhost:5173`, quebrando o fluxo em produção
 
 ### Configuração do Gmail SMTP
 
@@ -224,36 +231,60 @@ http://localhost:8080/v3/api-docs
 #### Autenticação
 - `POST /api/v1/auth/login` - Fazer login
 - `POST /api/v1/auth/refresh` - Renovar token JWT
+- `POST /api/v1/auth/forgot-password` - Solicitar redefinição de senha (responde sempre 200)
+- `POST /api/v1/auth/reset-password` - Redefinir a senha com o token recebido por e-mail
 
 #### Clientes
 - `GET /api/v1/clientes` - Listar clientes (paginado)
-- `POST /api/v1/clientes` - Criar novo cliente
+- `POST /api/v1/clientes` - Criar novo cliente (cria a pasta do cliente no Drive)
 - `GET /api/v1/clientes/{id}` - Obter detalhes de um cliente
 - `PUT /api/v1/clientes/{id}` - Atualizar cliente
-- `DELETE /api/v1/clientes/{id}` - Deletar cliente
+- `PATCH /api/v1/clientes/{id}/toggle-status` - Ativar/inativar cliente
+- `DELETE /api/v1/clientes/{id}` - Deletar cliente (ADMIN)
+- `GET /api/v1/cep/{cep}` - Consulta de CEP via ViaCEP
 
 #### Documentos
-- `GET /api/v1/documentos` - Listar documentos
-- `POST /api/v1/documentos` - Upload de documento
+- `GET /api/v1/documentos` - Listar documentos (relatório geral, paginado)
+- `GET /api/v1/clientes/{clienteId}/documentos` - Documentos de um cliente
+- `POST /api/v1/documentos` - Criar documento apenas com metadados
+- `POST /api/v1/documentos/upload` - Upload do arquivo (multipart: `file` + `data`)
 - `GET /api/v1/documentos/{id}` - Obter documento
-- `DELETE /api/v1/documentos/{id}` - Deletar documento
+- `PUT /api/v1/documentos/{id}` - Atualizar documento
+- `DELETE /api/v1/documentos/{id}` - Deletar documento (ADMIN)
+- `GET /api/v1/dashboard/summary` - Totais do dashboard
 
 #### Contratos
 - `GET /api/v1/contratos` - Listar contratos
+- `GET /api/v1/clientes/{clienteId}/contratos` - Contratos de um cliente
 - `POST /api/v1/contratos` - Criar contrato
 - `GET /api/v1/contratos/{id}` - Obter detalhes do contrato
 - `PUT /api/v1/contratos/{id}` - Atualizar contrato
+- `DELETE /api/v1/contratos/{id}` - Deletar contrato (ADMIN)
+- `POST /api/v1/contratos/{id}/gerar-cobrancas` - Gerar manualmente a cobrança do mês
 
 #### Cobranças
 - `GET /api/v1/cobrancas` - Listar cobranças
+- `GET /api/v1/contratos/{contratoId}/cobrancas` - Cobranças de um contrato
 - `POST /api/v1/cobrancas` - Criar cobrança
-- `PUT /api/v1/cobrancas/{id}` - Atualizar status de cobrança
+- `PUT /api/v1/cobrancas/{id}` - Atualizar cobrança
+- `PATCH /api/v1/cobrancas/{id}/pagar` - Registrar pagamento (JSON ou multipart com comprovante)
+- `DELETE /api/v1/cobrancas/{id}` - Deletar cobrança (ADMIN)
+- `GET /api/v1/financeiro/summary` - Totais financeiros
 
 #### Alertas
-- `GET /api/v1/alertas` - Listar alertas pendentes
-- `GET /api/v1/alertas/log` - Histórico de alertas
-- `POST /api/v1/alertas/snooze/{id}` - Adiar alerta
-- `PUT /api/v1/alertas/configuracoes` - Configurar alertas
+- `GET /api/v1/alertas/pendentes` - Alertas pendentes (documentos e cobranças)
+- `GET /api/v1/alertas/summary` - Contagem para o sino da barra superior
+- `GET /api/v1/alertas/historico` - Histórico de alertas enviados
+- `GET /api/v1/alertas/config` - Obter configuração de alertas
+- `PUT /api/v1/alertas/config` - Atualizar configuração (ADMIN)
+- `POST /api/v1/alertas/{id}/snooze?dias=7&tipo=DOCUMENTO` - Adiar alerta
+- `POST /api/v1/alertas/enviar-manual/{id}?tipo=DOCUMENTO` - Disparar alerta manualmente
+
+#### Exportação
+- `GET /api/v1/export/documentos` - Relatório de documentos em CSV
+- `GET /api/v1/export/cobrancas` - Relatório de cobranças em CSV
+
+Ambos aceitam os mesmos filtros das listagens e retornam CSV com separador `;` e BOM UTF-8, pronto para abrir no Excel em pt-BR.
 
 Para documentação completa de cada endpoint, acesse o Swagger UI.
 

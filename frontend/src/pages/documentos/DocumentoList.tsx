@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, Search, Pencil } from 'lucide-react';
+import { Plus, Search, Pencil, ExternalLink } from 'lucide-react';
 import type { Documento, Page, CategoriaDocumento, StatusDocumento } from '../../types';
 import * as documentosApi from '../../api/documentos';
 import Button from '../../components/ui/Button';
 import Table from '../../components/ui/Table';
+import ExportButton from '../../components/ui/ExportButton';
 
 const PAGE_SIZE = 10;
 
@@ -167,6 +168,13 @@ const DocumentoList: React.FC = () => {
       className: 'text-right',
       render: (row: Documento) => (
         <div className="flex items-center justify-end gap-2">
+          {row.googleDriveUrl && (
+            <a href={row.googleDriveUrl} target="_blank" rel="noopener noreferrer">
+              <Button variant="ghost" size="sm" title="Abrir arquivo no Google Drive">
+                <ExternalLink size={15} />
+              </Button>
+            </a>
+          )}
           <Link to={`/documentos/${row.id}/editar`}>
             <Button variant="ghost" size="sm" title="Editar">
               <Pencil size={15} />
@@ -186,12 +194,23 @@ const DocumentoList: React.FC = () => {
             Relatorio geral de documentos de todos os clientes
           </p>
         </div>
-        <Link to="/documentos/novo">
-          <Button variant="primary">
-            <Plus size={16} />
-            Novo Documento
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <ExportButton
+            endpoint="/api/v1/export/documentos"
+            params={{
+              search: debouncedSearch || undefined,
+              categoria: categoriaFilter || undefined,
+              status: statusFilter || undefined,
+            }}
+            filename="documentos.csv"
+          />
+          <Link to="/documentos/novo">
+            <Button variant="primary">
+              <Plus size={16} />
+              Novo Documento
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="flex gap-3 flex-wrap">

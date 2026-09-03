@@ -22,6 +22,7 @@ public class AlertaLogResponse {
     private String documentoNome;
     private String clienteNome;
     private Long cobrancaId;
+    private String cobrancaDescricao;
     private TipoAlerta tipo;
     private CanalAlerta canal;
     private String destinatario;

@@ -548,4 +548,23 @@ class CobrancaServiceTest {
     void specificationLambda_comTodosFiltros_executa() {
         invokeSpec(captureSpec(20L, StatusCobranca.PAGO, 6, 2025));
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void specificationLambda_comMesSemAno_naoAdicionaFiltroDePeriodo() {
+        Specification<Cobranca> spec = captureSpec(null, null, 3, null);
+
+        Root<Cobranca> root = mock(Root.class);
+        CriteriaQuery<?> query = mock(CriteriaQuery.class);
+        CriteriaBuilder cb = mock(CriteriaBuilder.class);
+        Predicate andPredicate = mock(Predicate.class);
+        lenient().when(cb.and(any(Predicate[].class))).thenReturn(andPredicate);
+
+        Predicate result = spec.toPredicate(root, query, cb);
+
+        assertThat(result).isSameAs(andPredicate);
+        // Mês sem ano não delimita intervalo de vencimento
+        verify(cb, never()).between(any(), any(Comparable.class), any(Comparable.class));
+        verify(root, never()).get("dataVencimento");
+    }
 }

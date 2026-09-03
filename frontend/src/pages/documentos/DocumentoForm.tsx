@@ -5,6 +5,10 @@ import * as documentosApi from '../../api/documentos';
 import * as clientesApi from '../../api/clientes';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
+import { MAX_UPLOAD_BYTES } from '../../api/documentos';
+import { ExternalLink, Paperclip } from 'lucide-react';
+
+const MAX_UPLOAD_MB = Math.round(MAX_UPLOAD_BYTES / (1024 * 1024));
 
 interface FormData {
   clienteId: string;
@@ -32,6 +36,8 @@ const DocumentoForm: React.FC = () => {
   const isEdit = !!id;
 
   const [form, setForm] = useState<FormData>(emptyForm());
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [arquivoAtualUrl, setArquivoAtualUrl] = useState<string>('');
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -59,6 +65,7 @@ const DocumentoForm: React.FC = () => {
           revisao: doc.revisao ?? '',
           observacoes: doc.observacoes ?? '',
         });
+        setArquivoAtualUrl(doc.googleDriveUrl ?? '');
       })
       .catch(() => navigate('/documentos'))
       .finally(() => setLoading(false));
@@ -75,6 +82,23 @@ const DocumentoForm: React.FC = () => {
     if (!form.nome.trim()) errs.nome = 'Nome e obrigatorio.';
     setErrors(errs);
     return Object.keys(errs).length === 0;
+  };
+
+  const handleArquivoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selecionado = e.target.files?.[0] ?? null;
+
+    if (selecionado && selecionado.size > MAX_UPLOAD_BYTES) {
+      e.target.value = '';
+      setArquivo(null);
+      setErrors((prev) => ({
+        ...prev,
+        arquivo: `O arquivo excede o limite de ${MAX_UPLOAD_MB} MB.`,
+      }));
+      return;
+    }
+
+    setArquivo(selecionado);
+    setErrors((prev) => ({ ...prev, arquivo: '' }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -94,6 +118,8 @@ const DocumentoForm: React.FC = () => {
       };
       if (isEdit) {
         await documentosApi.update(Number(id), payload);
+      } else if (arquivo) {
+        await documentosApi.uploadDocumento({ ...payload, clienteId: Number(form.clienteId) }, arquivo);
       } else {
         await documentosApi.create({ ...payload, clienteId: Number(form.clienteId) });
       }
@@ -191,6 +217,60 @@ const DocumentoForm: React.FC = () => {
               value={form.revisao}
               onChange={(e) => setField('revisao', e.target.value)}
             />
+
+            {!isEdit ? (
+              <div>
+                <label
+                  htmlFor="documento-arquivo"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Arquivo
+                </label>
+                <input
+                  id="documento-arquivo"
+                  type="file"
+                  onChange={handleArquivoChange}
+                  aria-invalid={errors.arquivo ? true : undefined}
+                  aria-describedby={errors.arquivo ? 'documento-arquivo-error' : undefined}
+                  className="w-full bg-white border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-red-50 file:text-red-700 hover:file:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 cursor-pointer"
+                />
+                {errors.arquivo ? (
+                  <p id="documento-arquivo-error" className="mt-1 text-xs text-red-600">
+                    {errors.arquivo}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Opcional. Tamanho maximo de {MAX_UPLOAD_MB} MB. O arquivo e enviado para a pasta
+                    do cliente no Google Drive.
+                  </p>
+                )}
+                {arquivo && (
+                  <p className="mt-1 text-xs text-gray-600 flex items-center gap-1">
+                    <Paperclip size={12} />
+                    {arquivo.name}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div>
+                <span className="block text-sm font-medium text-gray-700 mb-1">Arquivo</span>
+                {arquivoAtualUrl ? (
+                  <a
+                    href={arquivoAtualUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm text-red-600 hover:text-red-700 hover:underline"
+                  >
+                    <ExternalLink size={14} />
+                    Abrir arquivo no Google Drive
+                  </a>
+                ) : (
+                  <p className="text-sm text-gray-500">
+                    Nenhum arquivo enviado. Para anexar um arquivo, cadastre um novo documento.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

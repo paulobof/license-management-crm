@@ -5,25 +5,32 @@ import com.prediman.crm.dto.CobrancaResponse;
 import com.prediman.crm.dto.FinanceiroSummaryResponse;
 import com.prediman.crm.model.enums.StatusCobranca;
 import com.prediman.crm.service.CobrancaService;
+import com.prediman.crm.service.GoogleDriveService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
+@Slf4j
 public class CobrancaController {
 
     private final CobrancaService cobrancaService;
+    private final GoogleDriveService googleDriveService;
 
     @GetMapping("/cobrancas")
     public ResponseEntity<Page<CobrancaResponse>> findAll(
@@ -49,22 +56,59 @@ public class CobrancaController {
     }
 
     @PostMapping("/cobrancas")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
     public ResponseEntity<CobrancaResponse> create(@Valid @RequestBody CobrancaRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(cobrancaService.create(request));
     }
 
     @PutMapping("/cobrancas/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
     public ResponseEntity<CobrancaResponse> update(@PathVariable Long id,
                                                     @Valid @RequestBody CobrancaRequest request) {
         return ResponseEntity.ok(cobrancaService.update(id, request));
     }
 
-    @PatchMapping("/cobrancas/{id}/pagar")
-    @PreAuthorize("hasRole('ADMIN')")
+    /**
+     * Registro de pagamento em JSON puro (sem comprovante).
+     */
+    @PatchMapping(value = "/cobrancas/{id}/pagar", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
     public ResponseEntity<CobrancaResponse> registrarPagamento(@PathVariable Long id,
                                                                 @RequestBody CobrancaRequest request) {
+        return ResponseEntity.ok(cobrancaService.registrarPagamento(id, request));
+    }
+
+    /**
+     * Registro de pagamento com comprovante opcional (multipart/form-data).
+     * A parte "data" traz o JSON do pagamento e a parte "file" o arquivo do comprovante.
+     * Quando o Google Drive está habilitado e há arquivo, ele é enviado e o id do
+     * arquivo é gravado em comprovanteDriveId.
+     */
+    @PatchMapping(value = "/cobrancas/{id}/pagar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
+    public ResponseEntity<CobrancaResponse> registrarPagamentoComComprovante(
+            @PathVariable Long id,
+            @RequestPart(value = "file", required = false) MultipartFile file,
+            @RequestPart("data") CobrancaRequest request) throws IOException {
+
+        if (file != null && !file.isEmpty()) {
+            if (googleDriveService.isEnabled()) {
+                GoogleDriveService.GoogleDriveResult result = googleDriveService.upload(
+                        file.getOriginalFilename(),
+                        file.getContentType(),
+                        file.getBytes(),
+                        null);
+
+                if (result != null) {
+                    request.setComprovanteDriveId(result.getFileId());
+                } else {
+                    log.warn("Falha ao enviar comprovante da cobrança {} ao Google Drive; pagamento registrado sem comprovante", id);
+                }
+            } else {
+                log.warn("Google Drive desabilitado; pagamento da cobrança {} registrado sem comprovante", id);
+            }
+        }
+
         return ResponseEntity.ok(cobrancaService.registrarPagamento(id, request));
     }
 

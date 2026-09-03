@@ -28,6 +28,7 @@ public class UserService {
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
     private final UsuarioMapper usuarioMapper;
+    private final EmailService emailService;
 
     @Transactional(readOnly = true)
     public List<UsuarioResponse> findAll() {
@@ -58,7 +59,44 @@ public class UserService {
 
         Usuario saved = usuarioRepository.save(usuario);
         log.info("Usuário criado com id: {}", saved.getId());
+
+        enviarEmailBoasVindas(saved, request.getSenha());
+
         return usuarioMapper.toResponse(saved);
+    }
+
+    /**
+     * Envia ao novo usuário as credenciais iniciais de acesso.
+     *
+     * <p>Falha no envio nunca aborta a criação do usuário: o erro é apenas registrado
+     * em log (sem expor a senha).</p>
+     */
+    private void enviarEmailBoasVindas(Usuario usuario, String senhaInicial) {
+        try {
+            boolean enviado = emailService.enviar(
+                    usuario.getEmail(),
+                    "Prediman CRM - Bem-vindo(a) ao sistema",
+                    montarMensagemBoasVindas(usuario, senhaInicial));
+
+            if (!enviado) {
+                log.warn("E-mail de boas-vindas não enviado para o usuário id={}", usuario.getId());
+            }
+        } catch (RuntimeException e) {
+            log.warn("Falha ao enviar e-mail de boas-vindas para o usuário id={}: {}",
+                    usuario.getId(), e.getMessage());
+        }
+    }
+
+    private String montarMensagemBoasVindas(Usuario usuario, String senhaInicial) {
+        return "Olá, " + usuario.getNome() + "!\n\n"
+                + "Sua conta no Prediman CRM foi criada com sucesso.\n\n"
+                + "Dados de acesso:\n"
+                + "E-mail: " + usuario.getEmail() + "\n"
+                + "Senha inicial: " + senhaInicial + "\n\n"
+                + "Por segurança, altere esta senha no seu primeiro acesso utilizando a opção "
+                + "\"Esqueci minha senha\" na tela de login.\n\n"
+                + "Nunca compartilhe suas credenciais com terceiros.\n\n"
+                + "Prediman Engenharia";
     }
 
     @Transactional

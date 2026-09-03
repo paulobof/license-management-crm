@@ -295,4 +295,13 @@ class ConfiguracaoAlertaTest {
         ConfiguracaoAlerta c = ConfiguracaoAlerta.builder().id(1L).build();
         assertThat(c).isEqualTo(c);
     }
+
+    @Test
+    void getDiasAntecedenciaList_ignoraValoresVaziosEntreVirgulas() {
+        ConfiguracaoAlerta config = ConfiguracaoAlerta.builder()
+                .diasAntecedencia("30,,15, ,7")
+                .build();
+
+        assertThat(config.getDiasAntecedenciaList()).containsExactly(30, 15, 7);
+    }
 }

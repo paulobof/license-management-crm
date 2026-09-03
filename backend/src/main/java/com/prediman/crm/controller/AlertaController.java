@@ -81,24 +81,35 @@ public class AlertaController {
     }
 
     /**
-     * POST /api/alertas/{documentoId}/snooze
-     * Adia o alerta de um documento pelo número de dias informado (padrão 7).
+     * POST /api/alertas/{id}/snooze
+     * Adia o alerta pelo número de dias informado (padrão 7).
+     * O parâmetro {@code tipo} define se o id refere-se a um documento (padrão) ou a uma cobrança.
      */
-    @PostMapping("/{documentoId}/snooze")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/{id}/snooze")
+    @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
     public ResponseEntity<AlertaLogResponse> snooze(
-            @PathVariable Long documentoId,
-            @RequestParam(defaultValue = "7") @Min(1) @Max(90) int dias) {
-        return ResponseEntity.ok(alertaService.snoozeAlerta(documentoId, dias));
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "7") @Min(1) @Max(90) int dias,
+            @RequestParam(defaultValue = "DOCUMENTO") TipoAlerta tipo) {
+        if (tipo == TipoAlerta.COBRANCA) {
+            return ResponseEntity.ok(alertaService.snoozeAlertaCobranca(id, dias));
+        }
+        return ResponseEntity.ok(alertaService.snoozeAlerta(id, dias));
     }
 
     /**
-     * POST /api/alertas/enviar-manual/{documentoId}
-     * Dispara manualmente um alerta para o documento, criando uma entrada de log PENDENTE.
+     * POST /api/alertas/enviar-manual/{id}
+     * Dispara manualmente um alerta, criando uma entrada de log PENDENTE.
+     * O parâmetro {@code tipo} define se o id refere-se a um documento (padrão) ou a uma cobrança.
      */
-    @PostMapping("/enviar-manual/{documentoId}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<AlertaLogResponse> enviarManual(@PathVariable Long documentoId) {
-        return ResponseEntity.ok(alertaService.enviarManual(documentoId));
+    @PostMapping("/enviar-manual/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
+    public ResponseEntity<AlertaLogResponse> enviarManual(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "DOCUMENTO") TipoAlerta tipo) {
+        if (tipo == TipoAlerta.COBRANCA) {
+            return ResponseEntity.ok(alertaService.enviarManualCobranca(id));
+        }
+        return ResponseEntity.ok(alertaService.enviarManual(id));
     }
 }

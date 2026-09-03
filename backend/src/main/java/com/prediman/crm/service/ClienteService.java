@@ -36,6 +36,7 @@ public class ClienteService {
     private final ContratoRepository contratoRepository;
     private final CobrancaRepository cobrancaRepository;
     private final ClienteMapper clienteMapper;
+    private final GoogleDriveService googleDriveService;
 
     @Transactional
     public ClienteResponse create(ClienteRequest request) {
@@ -51,6 +52,12 @@ public class ClienteService {
         Cliente cliente = clienteMapper.toEntity(request);
         Cliente saved = clienteRepository.save(cliente);
         log.info("Cliente criado com id: {}", saved.getId());
+
+        // A pasta do Drive so pode ser nomeada apos o save, pois depende do id gerado.
+        if (!StringUtils.hasText(saved.getGoogleDriveFolderId())) {
+            criarPastaDrive(saved);
+        }
+
         return clienteMapper.toResponse(saved);
     }
 
@@ -147,6 +154,54 @@ public class ClienteService {
         Cliente saved = clienteRepository.save(cliente);
         log.info("Status do cliente {} alterado para {}", id, novoStatus);
         return clienteMapper.toResponse(saved);
+    }
+
+    /**
+     * Retorna o id da pasta do cliente no Google Drive, criando-a sob demanda quando ainda nao existir.
+     * Devolve {@code null} quando o Drive esta desabilitado ou a criacao falha.
+     */
+    @Transactional
+    public String obterOuCriarPastaDrive(Long clienteId) {
+        Cliente cliente = findClienteById(clienteId);
+        if (StringUtils.hasText(cliente.getGoogleDriveFolderId())) {
+            return cliente.getGoogleDriveFolderId();
+        }
+        return criarPastaDrive(cliente);
+    }
+
+    /**
+     * Cria a pasta do cliente no Google Drive e persiste o id.
+     * Qualquer falha e apenas registrada em log — o cadastro do cliente nunca e abortado por causa do Drive.
+     */
+    private String criarPastaDrive(Cliente cliente) {
+        if (!googleDriveService.isEnabled()) {
+            return null;
+        }
+
+        try {
+            String folderId = googleDriveService.createFolder(montarNomePasta(cliente), null);
+            if (!StringUtils.hasText(folderId)) {
+                log.warn("Google Drive nao retornou id de pasta para o cliente {}", cliente.getId());
+                return null;
+            }
+            cliente.setGoogleDriveFolderId(folderId);
+            clienteRepository.save(cliente);
+            log.info("Pasta do cliente {} criada no Google Drive: {}", cliente.getId(), folderId);
+            return folderId;
+        } catch (RuntimeException e) {
+            log.warn("Falha ao criar pasta no Google Drive para o cliente {}: {}", cliente.getId(), e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Nome padrao da pasta do cliente no Drive: "0001 - Nome Fantasia" (ou razao social, se nao houver fantasia).
+     */
+    static String montarNomePasta(Cliente cliente) {
+        String nome = StringUtils.hasText(cliente.getNomeFantasia())
+                ? cliente.getNomeFantasia()
+                : cliente.getRazaoSocial();
+        return String.format("%04d - %s", cliente.getId(), nome);
     }
 
     private Cliente findClienteById(Long id) {

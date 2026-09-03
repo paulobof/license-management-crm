@@ -22,10 +22,13 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.lang.reflect.Method;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
@@ -220,5 +223,39 @@ class ClienteControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.cep").value("01310-100"))
                 .andExpect(jsonPath("$.logradouro").value("Av. Paulista"));
+    }
+
+    // -------------------------------------------------------------------------
+    // Politica de papeis
+    // -------------------------------------------------------------------------
+
+    private String preAuthorizeDe(String metodo, Class<?>... parametros) throws NoSuchMethodException {
+        Method method = ClienteController.class.getMethod(metodo, parametros);
+        PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
+        return preAuthorize == null ? null : preAuthorize.value();
+    }
+
+    @Test
+    @DisplayName("Escrita de clientes liberada para ADMIN e USUARIO")
+    void escrita_liberadaParaAdminEUsuario() throws Exception {
+        assertThat(preAuthorizeDe("create", ClienteRequest.class))
+                .isEqualTo("hasAnyRole('ADMIN','USUARIO')");
+        assertThat(preAuthorizeDe("update", Long.class, ClienteRequest.class))
+                .isEqualTo("hasAnyRole('ADMIN','USUARIO')");
+        assertThat(preAuthorizeDe("toggleStatus", Long.class))
+                .isEqualTo("hasAnyRole('ADMIN','USUARIO')");
+    }
+
+    @Test
+    @DisplayName("Exclusao de clientes restrita a ADMIN")
+    void delete_restritoAdmin() throws Exception {
+        assertThat(preAuthorizeDe("delete", Long.class)).isEqualTo("hasRole('ADMIN')");
+    }
+
+    @Test
+    @DisplayName("Leitura de clientes nao exige papel especifico")
+    void leitura_semRestricaoDePapel() throws Exception {
+        assertThat(preAuthorizeDe("findById", Long.class)).isNull();
+        assertThat(preAuthorizeDe("buscarCep", String.class)).isNull();
     }
 }

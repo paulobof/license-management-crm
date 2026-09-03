@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Pencil, ArrowLeft, MapPin, Phone, Mail, User } from 'lucide-react';
-import type { Cliente } from '../../types';
+import { Pencil, ArrowLeft, MapPin, Phone, Mail, User, FileText, ExternalLink } from 'lucide-react';
+import type { Cliente, Documento } from '../../types';
 import * as clientesApi from '../../api/clientes';
+import * as documentosApi from '../../api/documentos';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
+import { formatDate } from '../../utils/formatDate';
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <div className="bg-white border border-gray-200 rounded-xl p-5">
@@ -31,6 +33,7 @@ const ClienteDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [cliente, setCliente] = useState<Cliente | null>(null);
+  const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -42,6 +45,14 @@ const ClienteDetail: React.FC = () => {
       .catch(() => navigate('/clientes'))
       .finally(() => setLoading(false));
   }, [id, navigate]);
+
+  useEffect(() => {
+    if (!id) return;
+    documentosApi
+      .getByClienteId(Number(id))
+      .then(setDocumentos)
+      .catch(() => setDocumentos([]));
+  }, [id]);
 
   if (loading) {
     return (
@@ -170,6 +181,38 @@ const ClienteDetail: React.FC = () => {
               </div>
             ))}
           </div>
+        )}
+      </Section>
+
+      <Section title={`Documentos (${documentos.length})`}>
+        {!documentos.length ? (
+          <p className="text-sm text-gray-500">Nenhum documento cadastrado.</p>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {documentos.map((documento) => (
+              <li key={documento.id} className="flex items-center gap-3 py-2.5">
+                <FileText size={15} className="text-red-600 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-gray-800 truncate">{documento.nome}</p>
+                  <p className="text-xs text-gray-500">
+                    Validade: {formatDate(documento.dataValidade)}
+                  </p>
+                </div>
+                {documento.googleDriveUrl && (
+                  <a
+                    href={documento.googleDriveUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Abrir arquivo no Google Drive"
+                    className="inline-flex items-center gap-1.5 text-sm text-red-600 hover:text-red-700 hover:underline shrink-0"
+                  >
+                    <ExternalLink size={14} />
+                    Abrir
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
       </Section>
 

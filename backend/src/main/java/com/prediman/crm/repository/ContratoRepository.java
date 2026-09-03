@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
+import com.prediman.crm.model.enums.Periodicidade;
 import com.prediman.crm.model.enums.StatusContrato;
 
 import java.util.List;
@@ -19,6 +20,11 @@ public interface ContratoRepository extends JpaRepository<Contrato, Long>, JpaSp
     List<Contrato> findTop500ByClienteId(Long clienteId);
 
     boolean existsByClienteIdAndStatus(Long clienteId, StatusContrato status);
+
+    /**
+     * Contratos filtrados por periodicidade e status — usado pela geração automática mensal.
+     */
+    List<Contrato> findByPeriodicidadeAndStatus(Periodicidade periodicidade, StatusContrato status);
 
     @Override
     @EntityGraph(attributePaths = {"cliente", "cobrancas"})

@@ -29,6 +29,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -39,7 +40,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.lenient;
 
@@ -54,6 +57,12 @@ class DocumentoServiceTest {
 
     @Mock
     private DocumentoMapper documentoMapper;
+
+    @Mock
+    private ClienteService clienteService;
+
+    @Mock
+    private GoogleDriveService googleDriveService;
 
     @InjectMocks
     private DocumentoService documentoService;
@@ -556,5 +565,182 @@ class DocumentoServiceTest {
     @Test
     void specificationLambda_todosOsFiltros_executa() {
         invokeSpec(captureSpec("busca", CategoriaDocumento.ALVARA, "A_VENCER", 2L));
+    }
+
+    // ---------------------------------------------------------------------------
+    // upload
+    // ---------------------------------------------------------------------------
+
+    private MockMultipartFile arquivoPdf() {
+        return new MockMultipartFile("file", "original.pdf", "application/pdf", "conteudo".getBytes());
+    }
+
+    @org.junit.jupiter.api.DisplayName("upload envia o arquivo para a pasta do cliente e cria o documento")
+    @Test
+    void upload_driveHabilitado_enviaParaPastaDoCliente() throws Exception {
+        MockMultipartFile arquivo = arquivoPdf();
+        request.setRevisao("A");
+
+        when(googleDriveService.isEnabled()).thenReturn(true);
+        when(clienteService.obterOuCriarPastaDrive(1L)).thenReturn("folder-1");
+        when(googleDriveService.upload(anyString(), anyString(), any(byte[].class), eq("folder-1")))
+                .thenReturn(new GoogleDriveService.GoogleDriveResult("file-1", "https://drive/file-1"));
+        when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
+        when(documentoRepository.save(any(Documento.class))).thenReturn(documento);
+        when(documentoMapper.toResponse(documento)).thenReturn(response);
+
+        DocumentoResponse resultado = documentoService.upload(request, arquivo);
+
+        assertThat(resultado).isEqualTo(response);
+        assertThat(request.getMimeType()).isEqualTo("application/pdf");
+        assertThat(request.getTamanhoBytes()).isEqualTo(arquivo.getSize());
+        assertThat(request.getGoogleDriveFileId()).isEqualTo("file-1");
+        assertThat(request.getGoogleDriveUrl()).isEqualTo("https://drive/file-1");
+
+        ArgumentCaptor<String> nomeCaptor = ArgumentCaptor.forClass(String.class);
+        verify(googleDriveService).upload(nomeCaptor.capture(), eq("application/pdf"),
+                any(byte[].class), eq("folder-1"));
+        assertThat(nomeCaptor.getValue()).isEqualTo("2024.01.15_Contrato Social_RevA.pdf");
+    }
+
+    @org.junit.jupiter.api.DisplayName("upload mantem apenas os metadados quando o Drive falha")
+    @Test
+    void upload_driveRetornaNull_mantemMetadados() throws Exception {
+        MockMultipartFile arquivo = arquivoPdf();
+
+        when(googleDriveService.isEnabled()).thenReturn(true);
+        when(clienteService.obterOuCriarPastaDrive(1L)).thenReturn(null);
+        when(googleDriveService.upload(anyString(), anyString(), any(byte[].class), isNull()))
+                .thenReturn(null);
+        when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
+        when(documentoRepository.save(any(Documento.class))).thenReturn(documento);
+        when(documentoMapper.toResponse(documento)).thenReturn(response);
+
+        DocumentoResponse resultado = documentoService.upload(request, arquivo);
+
+        assertThat(resultado).isEqualTo(response);
+        assertThat(request.getGoogleDriveFileId()).isNull();
+        assertThat(request.getGoogleDriveUrl()).isNull();
+    }
+
+    @org.junit.jupiter.api.DisplayName("upload com Drive desabilitado nao chama o Drive")
+    @Test
+    void upload_driveDesabilitado_apenasMetadados() throws Exception {
+        MockMultipartFile arquivo = arquivoPdf();
+
+        when(googleDriveService.isEnabled()).thenReturn(false);
+        when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
+        when(documentoRepository.save(any(Documento.class))).thenReturn(documento);
+        when(documentoMapper.toResponse(documento)).thenReturn(response);
+
+        documentoService.upload(request, arquivo);
+
+        verify(googleDriveService, never()).upload(anyString(), anyString(), any(byte[].class), any());
+        verify(clienteService, never()).obterOuCriarPastaDrive(anyLong());
+        assertThat(request.getTamanhoBytes()).isEqualTo(arquivo.getSize());
+    }
+
+    // ---------------------------------------------------------------------------
+    // montarNomeArquivo
+    // ---------------------------------------------------------------------------
+
+    private DocumentoRequest requestNome(String nome, LocalDate dataEmissao, String revisao) {
+        return DocumentoRequest.builder()
+                .clienteId(1L)
+                .nome(nome)
+                .dataEmissao(dataEmissao)
+                .revisao(revisao)
+                .build();
+    }
+
+    @org.junit.jupiter.api.DisplayName("montarNomeArquivo aplica o padrao AAAA.MM.DD_Nome_RevXX")
+    @Test
+    void montarNomeArquivo_padraoCompleto() {
+        String nome = DocumentoService.montarNomeArquivo(
+                requestNome("Alvara Municipal", LocalDate.of(2024, 1, 15), "01"), "original.PDF");
+
+        assertThat(nome).isEqualTo("2024.01.15_Alvara Municipal_Rev01.PDF");
+    }
+
+    @org.junit.jupiter.api.DisplayName("montarNomeArquivo nao duplica o prefixo Rev")
+    @Test
+    void montarNomeArquivo_naoDuplicaPrefixoRev() {
+        assertThat(DocumentoService.montarNomeArquivo(
+                requestNome("Contrato", LocalDate.of(2024, 2, 1), "Rev.01"), "a.pdf"))
+                .isEqualTo("2024.02.01_Contrato_Rev.01.pdf");
+
+        assertThat(DocumentoService.montarNomeArquivo(
+                requestNome("Contrato", LocalDate.of(2024, 2, 1), "rev A"), "a.pdf"))
+                .isEqualTo("2024.02.01_Contrato_rev A.pdf");
+    }
+
+    @org.junit.jupiter.api.DisplayName("montarNomeArquivo aceita revisao livre sem normalizar")
+    @Test
+    void montarNomeArquivo_revisaoTextoLivre() {
+        assertThat(DocumentoService.montarNomeArquivo(
+                requestNome("Contrato", LocalDate.of(2024, 2, 1), "FINAL"), "a.pdf"))
+                .isEqualTo("2024.02.01_Contrato_RevFINAL.pdf");
+
+        assertThat(DocumentoService.montarNomeArquivo(
+                requestNome("Contrato", LocalDate.of(2024, 2, 1), "0"), "a.pdf"))
+                .isEqualTo("2024.02.01_Contrato_Rev0.pdf");
+    }
+
+    @org.junit.jupiter.api.DisplayName("montarNomeArquivo omite o sufixo quando a revisao esta em branco")
+    @Test
+    void montarNomeArquivo_semRevisao() {
+        assertThat(DocumentoService.montarNomeArquivo(
+                requestNome("Contrato", LocalDate.of(2024, 2, 1), "   "), "a.pdf"))
+                .isEqualTo("2024.02.01_Contrato.pdf");
+
+        assertThat(DocumentoService.montarNomeArquivo(
+                requestNome("Contrato", LocalDate.of(2024, 2, 1), null), "a.pdf"))
+                .isEqualTo("2024.02.01_Contrato.pdf");
+    }
+
+    @org.junit.jupiter.api.DisplayName("montarNomeArquivo usa a data atual quando nao ha data de emissao")
+    @Test
+    void montarNomeArquivo_semDataEmissao() {
+        String esperado = LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy.MM.dd"));
+
+        assertThat(DocumentoService.montarNomeArquivo(requestNome("Contrato", null, null), "a.pdf"))
+                .isEqualTo(esperado + "_Contrato.pdf");
+    }
+
+    @org.junit.jupiter.api.DisplayName("montarNomeArquivo remove separadores e caracteres invalidos")
+    @Test
+    void montarNomeArquivo_sanitizaNome() {
+        assertThat(DocumentoService.montarNomeArquivo(
+                requestNome("../etc/passwd:*?", LocalDate.of(2024, 3, 4), null), "a.pdf"))
+                .isEqualTo("2024.03.04_etc_passwd.pdf");
+    }
+
+    @org.junit.jupiter.api.DisplayName("montarNomeArquivo usa nome padrao quando nada resta apos a limpeza")
+    @Test
+    void montarNomeArquivo_nomeTodoInvalido() {
+        assertThat(DocumentoService.montarNomeArquivo(
+                requestNome("///", LocalDate.of(2024, 3, 4), "//"), "a.pdf"))
+                .isEqualTo("2024.03.04_documento.pdf");
+    }
+
+    @org.junit.jupiter.api.DisplayName("montarNomeArquivo preserva a extensao do arquivo original")
+    @Test
+    void montarNomeArquivo_extensao() {
+        DocumentoRequest req = requestNome("Contrato", LocalDate.of(2024, 3, 4), null);
+
+        assertThat(DocumentoService.montarNomeArquivo(req, "C:\\pasta\\arquivo.docx"))
+                .isEqualTo("2024.03.04_Contrato.docx");
+        assertThat(DocumentoService.montarNomeArquivo(req, "/tmp/arquivo.tar.gz"))
+                .isEqualTo("2024.03.04_Contrato.gz");
+        assertThat(DocumentoService.montarNomeArquivo(req, "sem-extensao"))
+                .isEqualTo("2024.03.04_Contrato");
+        assertThat(DocumentoService.montarNomeArquivo(req, "terminando."))
+                .isEqualTo("2024.03.04_Contrato");
+        assertThat(DocumentoService.montarNomeArquivo(req, ".oculto"))
+                .isEqualTo("2024.03.04_Contrato");
+        assertThat(DocumentoService.montarNomeArquivo(req, null))
+                .isEqualTo("2024.03.04_Contrato");
+        assertThat(DocumentoService.montarNomeArquivo(req, "  "))
+                .isEqualTo("2024.03.04_Contrato");
     }
 }

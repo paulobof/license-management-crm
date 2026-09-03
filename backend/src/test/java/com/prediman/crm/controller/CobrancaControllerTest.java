@@ -10,8 +10,10 @@ import com.prediman.crm.security.JwtTokenProvider;
 import com.prediman.crm.security.RateLimitFilter;
 import com.prediman.crm.security.UserDetailsServiceImpl;
 import com.prediman.crm.service.CobrancaService;
+import com.prediman.crm.service.GoogleDriveService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -20,14 +22,21 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -45,6 +54,9 @@ class CobrancaControllerTest {
 
     @MockBean
     private CobrancaService cobrancaService;
+
+    @MockBean
+    private GoogleDriveService googleDriveService;
 
     @MockBean
     private JwtTokenProvider jwtTokenProvider;
@@ -283,5 +295,173 @@ class CobrancaControllerTest {
                 .andExpect(jsonPath("$.recebido").exists())
                 .andExpect(jsonPath("$.emAtraso").exists())
                 .andExpect(jsonPath("$.vencendo7dias").exists());
+    }
+
+    // -------------------------------------------------------------------------
+    // PATCH /api/v1/cobrancas/{id}/pagar (multipart com comprovante)
+    // -------------------------------------------------------------------------
+
+    private CobrancaRequest pagamentoRequest() {
+        return CobrancaRequest.builder()
+                .valorEsperado(new BigDecimal("1500.00"))
+                .valorRecebido(new BigDecimal("1500.00"))
+                .dataPagamento(LocalDate.of(2024, 3, 1))
+                .dataVencimento(LocalDate.of(2024, 3, 1))
+                .contratoId(5L)
+                .formaPagamento("PIX")
+                .build();
+    }
+
+    private MockMultipartFile dataPart(CobrancaRequest request) throws Exception {
+        return new MockMultipartFile(
+                "data", "", MediaType.APPLICATION_JSON_VALUE,
+                objectMapper.writeValueAsString(request).getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    @DisplayName("PATCH /pagar multipart com comprovante — envia ao Drive e grava o fileId")
+    void registrarPagamentoComComprovante_driveHabilitado_gravaComprovanteDriveId() throws Exception {
+        CobrancaResponse response = buildCobrancaResponse(1L);
+        response.setComprovanteDriveId("drive-file-1");
+        response.setComprovanteUrl("https://drive.google.com/file/d/drive-file-1/view");
+
+        when(googleDriveService.isEnabled()).thenReturn(true);
+        when(googleDriveService.upload(any(), any(), any(), any()))
+                .thenReturn(new GoogleDriveService.GoogleDriveResult(
+                        "drive-file-1", "https://drive.google.com/file/d/drive-file-1/view"));
+        when(cobrancaService.registrarPagamento(eq(1L), any(CobrancaRequest.class))).thenReturn(response);
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "comprovante.pdf", "application/pdf", "conteudo".getBytes(StandardCharsets.UTF_8));
+
+        mockMvc.perform(MockMvcRequestBuilders.multipart("/api/v1/cobrancas/1/pagar")
+                        .file(file)
+                        .file(dataPart(pagamentoRequest()))
+                        .with(req -> { req.setMethod("PATCH"); return req; }))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.comprovanteDriveId").value("drive-file-1"))
+                .andExpect(jsonPath("$.comprovanteUrl").value("https://drive.google.com/file/d/drive-file-1/view"));
+
+        ArgumentCaptor<CobrancaRequest> captor = ArgumentCaptor.forClass(CobrancaRequest.class);
+        verify(cobrancaService).registrarPagamento(eq(1L), captor.capture());
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().getComprovanteDriveId())
+                .isEqualTo("drive-file-1");
+    }
+
+    @Test
+    @DisplayName("PATCH /pagar multipart sem arquivo — registra pagamento normalmente")
+    void registrarPagamentoComComprovante_semArquivo_naoChamaDrive() throws Exception {
+        CobrancaResponse response = buildCobrancaResponse(1L);
+        when(cobrancaService.registrarPagamento(eq(1L), any(CobrancaRequest.class))).thenReturn(response);
+
+        mockMvc.perform(MockMvcRequestBuilders.multipart("/api/v1/cobrancas/1/pagar")
+                        .file(dataPart(pagamentoRequest()))
+                        .with(req -> { req.setMethod("PATCH"); return req; }))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1));
+
+        verify(googleDriveService, never()).upload(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("PATCH /pagar multipart com Drive desabilitado — registra sem comprovante")
+    void registrarPagamentoComComprovante_driveDesabilitado_registraSemComprovante() throws Exception {
+        CobrancaResponse response = buildCobrancaResponse(1L);
+        when(googleDriveService.isEnabled()).thenReturn(false);
+        when(cobrancaService.registrarPagamento(eq(1L), any(CobrancaRequest.class))).thenReturn(response);
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "comprovante.pdf", "application/pdf", "conteudo".getBytes(StandardCharsets.UTF_8));
+
+        mockMvc.perform(MockMvcRequestBuilders.multipart("/api/v1/cobrancas/1/pagar")
+                        .file(file)
+                        .file(dataPart(pagamentoRequest()))
+                        .with(req -> { req.setMethod("PATCH"); return req; }))
+                .andExpect(status().isOk());
+
+        verify(googleDriveService, never()).upload(any(), any(), any(), any());
+
+        ArgumentCaptor<CobrancaRequest> captor = ArgumentCaptor.forClass(CobrancaRequest.class);
+        verify(cobrancaService).registrarPagamento(eq(1L), captor.capture());
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().getComprovanteDriveId()).isNull();
+    }
+
+    @Test
+    @DisplayName("PATCH /pagar multipart com falha no Drive — registra sem comprovante")
+    void registrarPagamentoComComprovante_falhaNoDrive_registraSemComprovante() throws Exception {
+        CobrancaResponse response = buildCobrancaResponse(1L);
+        when(googleDriveService.isEnabled()).thenReturn(true);
+        when(googleDriveService.upload(any(), any(), any(), any())).thenReturn(null);
+        when(cobrancaService.registrarPagamento(eq(1L), any(CobrancaRequest.class))).thenReturn(response);
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "comprovante.pdf", "application/pdf", "conteudo".getBytes(StandardCharsets.UTF_8));
+
+        mockMvc.perform(MockMvcRequestBuilders.multipart("/api/v1/cobrancas/1/pagar")
+                        .file(file)
+                        .file(dataPart(pagamentoRequest()))
+                        .with(req -> { req.setMethod("PATCH"); return req; }))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<CobrancaRequest> captor = ArgumentCaptor.forClass(CobrancaRequest.class);
+        verify(cobrancaService).registrarPagamento(eq(1L), captor.capture());
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().getComprovanteDriveId()).isNull();
+    }
+
+    @Test
+    @DisplayName("PATCH /pagar multipart com arquivo vazio — nao envia ao Drive")
+    void registrarPagamentoComComprovante_arquivoVazio_naoChamaDrive() throws Exception {
+        CobrancaResponse response = buildCobrancaResponse(1L);
+        when(cobrancaService.registrarPagamento(eq(1L), any(CobrancaRequest.class))).thenReturn(response);
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "vazio.pdf", "application/pdf", new byte[0]);
+
+        mockMvc.perform(MockMvcRequestBuilders.multipart("/api/v1/cobrancas/1/pagar")
+                        .file(file)
+                        .file(dataPart(pagamentoRequest()))
+                        .with(req -> { req.setMethod("PATCH"); return req; }))
+                .andExpect(status().isOk());
+
+        verify(googleDriveService, never()).isEnabled();
+        verify(googleDriveService, never()).upload(any(), any(), any(), any());
+    }
+
+    // -------------------------------------------------------------------------
+    // Politica de papeis (item 3 do plano)
+    // -------------------------------------------------------------------------
+
+    private String preAuthorizeDe(String metodo) {
+        for (Method m : CobrancaController.class.getDeclaredMethods()) {
+            if (m.getName().equals(metodo)) {
+                PreAuthorize annotation = m.getAnnotation(PreAuthorize.class);
+                return annotation != null ? annotation.value() : null;
+            }
+        }
+        throw new IllegalArgumentException("Metodo nao encontrado: " + metodo);
+    }
+
+    @Test
+    @DisplayName("politica de papeis — escrita liberada para ADMIN e USUARIO, exclusao apenas ADMIN")
+    void politicaDePapeis_cobrancas() {
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("create"))
+                .isEqualTo("hasAnyRole('ADMIN','USUARIO')");
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("update"))
+                .isEqualTo("hasAnyRole('ADMIN','USUARIO')");
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("registrarPagamento"))
+                .isEqualTo("hasAnyRole('ADMIN','USUARIO')");
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("registrarPagamentoComComprovante"))
+                .isEqualTo("hasAnyRole('ADMIN','USUARIO')");
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("delete"))
+                .isEqualTo("hasRole('ADMIN')");
+    }
+
+    @Test
+    @DisplayName("politica de papeis — leituras nao exigem @PreAuthorize (autenticacao basta)")
+    void politicaDePapeis_leiturasSemPreAuthorize() {
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("findAll")).isNull();
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("findById")).isNull();
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("findByContrato")).isNull();
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("getFinanceiroSummary")).isNull();
     }
 }

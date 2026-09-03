@@ -7,6 +7,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.scheduling.TaskScheduler;
@@ -64,6 +65,30 @@ class AlertaSchedulerTest {
         alertaScheduler.executarAlertasDiarios();
 
         verify(alertaService).processarAlertasDiarios();
+    }
+
+    @Test
+    @DisplayName("executarAlertasDiarios processa documentos, cobrancas e so entao envia os pendentes")
+    void executarAlertasDiarios_processaCobrancasAntesDoEnvio() {
+        alertaScheduler.executarAlertasDiarios();
+
+        InOrder inOrder = inOrder(alertaService);
+        inOrder.verify(alertaService).processarAlertasDiarios();
+        inOrder.verify(alertaService).processarAlertasCobranca();
+        inOrder.verify(alertaService).processarEnvioPendentes();
+        inOrder.verifyNoMoreInteractions();
+    }
+
+    @Test
+    @DisplayName("executarAlertasDiarios captura excecao de alertas de cobranca sem propagar")
+    void executarAlertasDiarios_capturaExcecaoDeCobranca() {
+        doThrow(new RuntimeException("Erro simulado em cobrancas"))
+                .when(alertaService).processarAlertasCobranca();
+
+        // Nao deve lancar excecao
+        alertaScheduler.executarAlertasDiarios();
+
+        verify(alertaService, never()).processarEnvioPendentes();
     }
 
     @Test

@@ -34,6 +34,25 @@ public interface AlertaLogRepository extends JpaRepository<AlertaLog, Long>, Jpa
             @Param("startOfNextDay") LocalDateTime startOfNextDay);
 
     /**
+     * Verifica se já existe um AlertaLog para a cobrança na data informada (idempotência).
+     */
+    @Query("SELECT COUNT(a) > 0 FROM AlertaLog a WHERE a.cobrancaId = :cobrancaId " +
+           "AND a.createdAt >= :startOfDay AND a.createdAt < :startOfNextDay")
+    boolean existsByCobrancaIdAndCreatedAtDate(
+            @Param("cobrancaId") Long cobrancaId,
+            @Param("startOfDay") LocalDateTime startOfDay,
+            @Param("startOfNextDay") LocalDateTime startOfNextDay);
+
+    /**
+     * Retorna os IDs de cobranças que possuem snooze ativo (snoozedAte >= hoje).
+     */
+    @Query("SELECT DISTINCT a.cobrancaId FROM AlertaLog a " +
+           "WHERE a.statusEnvio = :status AND a.snoozedAte >= :today AND a.cobrancaId IS NOT NULL")
+    List<Long> findSnoozedCobrancaIds(
+            @Param("status") StatusEnvio status,
+            @Param("today") LocalDate today);
+
+    /**
      * Retorna os IDs de documentos que possuem snooze ativo (snoozedAte >= hoje).
      */
     @Query("SELECT DISTINCT a.documento.id FROM AlertaLog a " +

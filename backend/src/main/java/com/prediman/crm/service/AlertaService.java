@@ -3,12 +3,17 @@ package com.prediman.crm.service;
 import com.prediman.crm.dto.*;
 import com.prediman.crm.exception.ResourceNotFoundException;
 import com.prediman.crm.model.AlertaLog;
+import com.prediman.crm.model.Cliente;
+import com.prediman.crm.model.Cobranca;
 import com.prediman.crm.model.ConfiguracaoAlerta;
+import com.prediman.crm.model.Contato;
 import com.prediman.crm.model.Documento;
 import com.prediman.crm.model.enums.CanalAlerta;
+import com.prediman.crm.model.enums.StatusCobranca;
 import com.prediman.crm.model.enums.StatusEnvio;
 import com.prediman.crm.model.enums.TipoAlerta;
 import com.prediman.crm.repository.AlertaLogRepository;
+import com.prediman.crm.repository.CobrancaRepository;
 import com.prediman.crm.repository.ConfiguracaoAlertaRepository;
 import com.prediman.crm.repository.DocumentoRepository;
 import jakarta.persistence.criteria.Predicate;
@@ -23,14 +28,17 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -39,9 +47,13 @@ import java.util.stream.Collectors;
 @Slf4j
 public class AlertaService {
 
+    private static final DateTimeFormatter DATA_BR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    private static final Locale LOCALE_BR = Locale.forLanguageTag("pt-BR");
+
     private final ConfiguracaoAlertaRepository configuracaoAlertaRepository;
     private final AlertaLogRepository alertaLogRepository;
     private final DocumentoRepository documentoRepository;
+    private final CobrancaRepository cobrancaRepository;
     private final EmailService emailService;
     private final WhatsAppService whatsAppService;
 
@@ -99,15 +111,34 @@ public class AlertaService {
         // IDs de documentos com snooze ativo — excluir da listagem
         Set<Long> snoozedIds = new HashSet<>(alertaLogRepository.findSnoozedDocumentoIds(StatusEnvio.SNOOZED, today));
 
+        // IDs de cobranças com snooze ativo — excluir da listagem
+        Set<Long> snoozedCobrancaIds = new HashSet<>(
+                alertaLogRepository.findSnoozedCobrancaIds(StatusEnvio.SNOOZED, today));
+
         // Fetch documents with dataValidade within the configured window (a_vencer) or already vencidos
         List<Documento> documentos = documentoRepository.findAll(
                 buildDocumentosVencendoSpec(today, limite),
                 PageRequest.of(0, 100, Sort.by("dataValidade").ascending())
         ).getContent();
 
-        return documentos.stream()
+        // Cobranças em aberto vencendo dentro da janela ou já em atraso
+        List<Cobranca> cobrancas = cobrancaRepository
+                .findTop500ByStatusAndDataVencimentoLessThanEqualOrderByDataVencimentoAsc(
+                        StatusCobranca.PENDENTE, limite);
+
+        List<AlertaPendenteResponse> pendentes = new ArrayList<>();
+
+        documentos.stream()
                 .filter(d -> !snoozedIds.contains(d.getId()))
                 .map(d -> toAlertaPendenteResponse(d, today))
+                .forEach(pendentes::add);
+
+        cobrancas.stream()
+                .filter(c -> !snoozedCobrancaIds.contains(c.getId()))
+                .map(c -> toAlertaPendenteResponse(c, today))
+                .forEach(pendentes::add);
+
+        return pendentes.stream()
                 .sorted(Comparator.comparing(AlertaPendenteResponse::getDataVencimento,
                         Comparator.nullsLast(Comparator.naturalOrder())))
                 .collect(Collectors.toList());
@@ -126,8 +157,8 @@ public class AlertaService {
 
         long documentosAVencer = documentoRepository.countAVencer(today, today.plusDays(maxDias));
         long documentosVencidos = documentoRepository.countVencidos(today);
-        // cobrancasVencidas will be populated once Cobranca entity is available
-        long cobrancasVencidas = 0L;
+        long cobrancasVencidas = cobrancaRepository.countByStatusAndDataVencimentoBefore(
+                StatusCobranca.PENDENTE, today);
         long totalPendentes = documentosAVencer + documentosVencidos + cobrancasVencidas;
 
         return NotificacaoSummaryResponse.builder()
@@ -161,6 +192,29 @@ public class AlertaService {
         AlertaLog saved = alertaLogRepository.save(log);
         this.log.info("Alerta snoozed para documento id={} até {}", documentoId, snoozedAte);
         return toAlertaLogResponse(saved);
+    }
+
+    /**
+     * Adia o alerta de uma cobranca pelo numero de dias informado.
+     */
+    @Transactional
+    public AlertaLogResponse snoozeAlertaCobranca(Long cobrancaId, int dias) {
+        Cobranca cobranca = findCobrancaById(cobrancaId);
+
+        LocalDate snoozedAte = LocalDate.now().plusDays(dias);
+
+        AlertaLog alertaLog = AlertaLog.builder()
+                .cobrancaId(cobranca.getId())
+                .tipo(TipoAlerta.COBRANCA)
+                .canal(CanalAlerta.EMAIL)
+                .statusEnvio(StatusEnvio.SNOOZED)
+                .snoozedAte(snoozedAte)
+                .mensagem("Alerta adiado por " + dias + " dia(s). Próximo alerta em: " + snoozedAte)
+                .build();
+
+        AlertaLog saved = alertaLogRepository.save(alertaLog);
+        log.info("Alerta snoozed para cobrança id={} até {}", cobrancaId, snoozedAte);
+        return toAlertaLogResponse(saved, cobranca);
     }
 
     // -------------------------------------------------------------------------
@@ -210,6 +264,32 @@ public class AlertaService {
         AlertaLog saved = alertaLogRepository.save(alertaLog);
         log.info("Alerta manual criado para documento id={}", documentoId);
         return toAlertaLogResponse(saved);
+    }
+
+    /**
+     * Dispara manualmente um alerta de cobranca, criando um AlertaLog PENDENTE.
+     */
+    @Transactional
+    public AlertaLogResponse enviarManualCobranca(Long cobrancaId) {
+        Cobranca cobranca = findCobrancaById(cobrancaId);
+
+        ConfiguracaoAlerta config = loadConfig();
+
+        String mensagem = buildMensagem(config.getTemplateEmail(), cobranca);
+        String destinatario = resolveDestinatario(cobranca);
+
+        AlertaLog alertaLog = AlertaLog.builder()
+                .cobrancaId(cobranca.getId())
+                .tipo(TipoAlerta.COBRANCA)
+                .canal(CanalAlerta.EMAIL)
+                .destinatario(destinatario)
+                .mensagem(mensagem)
+                .statusEnvio(StatusEnvio.PENDENTE)
+                .build();
+
+        AlertaLog saved = alertaLogRepository.save(alertaLog);
+        log.info("Alerta manual criado para cobrança id={}", cobrancaId);
+        return toAlertaLogResponse(saved, cobranca);
     }
 
     // -------------------------------------------------------------------------
@@ -312,6 +392,107 @@ public class AlertaService {
     }
 
     // -------------------------------------------------------------------------
+    // Cobrancas — geração diária de lembretes (chamado pelo AlertaScheduler)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Gera AlertaLog PENDENTE (tipo COBRANCA) para as cobranças em aberto que estejam
+     * vencendo em algum dos dias de antecedência configurados ou que já estejam em atraso.
+     * Respeita snooze e mantém idempotência diária, criando um alerta por canal ativo.
+     */
+    @Transactional
+    public void processarAlertasCobranca() {
+        ConfiguracaoAlerta config = loadConfig();
+        List<Integer> diasAntecedencia = config.getDiasAntecedenciaList();
+        int maxDias = diasAntecedencia.stream().max(Integer::compareTo).orElse(30);
+
+        LocalDate today = LocalDate.now();
+        LocalDate limite = today.plusDays(maxDias);
+
+        // IDs de cobrancas com snooze ativo - nao gerar alertas para elas
+        Set<Long> snoozedIds = new HashSet<>(
+                alertaLogRepository.findSnoozedCobrancaIds(StatusEnvio.SNOOZED, today));
+
+        // Limites do dia para verificacao de idempotencia
+        LocalDateTime startOfDay = today.atStartOfDay();
+        LocalDateTime startOfNextDay = today.plusDays(1).atStartOfDay();
+
+        List<Cobranca> cobrancas = cobrancaRepository
+                .findTop500ByStatusAndDataVencimentoLessThanEqualOrderByDataVencimentoAsc(
+                        StatusCobranca.PENDENTE, limite);
+
+        int criados = 0;
+        int ignoradosSnooze = 0;
+        int ignoradosDuplicado = 0;
+
+        for (Cobranca cobranca : cobrancas) {
+            if (cobranca.getDataVencimento() == null) {
+                continue;
+            }
+
+            // Pular cobrancas com snooze ativo
+            if (snoozedIds.contains(cobranca.getId())) {
+                ignoradosSnooze++;
+                log.debug("Cobrança id={} ignorada (snooze ativo)", cobranca.getId());
+                continue;
+            }
+
+            long diasRestantes = ChronoUnit.DAYS.between(today, cobranca.getDataVencimento());
+            boolean emAtraso = diasRestantes < 0;
+            boolean vencendo = diasAntecedencia.stream().anyMatch(d -> d == diasRestantes);
+
+            if (!emAtraso && !vencendo) {
+                continue;
+            }
+
+            // Idempotencia - verificar se ja existe alerta para hoje
+            boolean jaExiste = alertaLogRepository.existsByCobrancaIdAndCreatedAtDate(
+                    cobranca.getId(), startOfDay, startOfNextDay);
+            if (jaExiste) {
+                ignoradosDuplicado++;
+                log.debug("Cobrança id={} já possui alerta para hoje; ignorando duplicata", cobranca.getId());
+                continue;
+            }
+
+            // Criar alerta EMAIL
+            if (Boolean.TRUE.equals(config.getEmailAtivo())) {
+                AlertaLog alertaEmail = AlertaLog.builder()
+                        .cobrancaId(cobranca.getId())
+                        .tipo(TipoAlerta.COBRANCA)
+                        .canal(CanalAlerta.EMAIL)
+                        .destinatario(resolveDestinatario(cobranca))
+                        .mensagem(buildMensagem(config.getTemplateEmail(), cobranca))
+                        .statusEnvio(StatusEnvio.PENDENTE)
+                        .build();
+
+                alertaLogRepository.save(alertaEmail);
+                criados++;
+            }
+
+            // Criar alerta WHATSAPP
+            if (Boolean.TRUE.equals(config.getWhatsappAtivo())) {
+                AlertaLog alertaWa = AlertaLog.builder()
+                        .cobrancaId(cobranca.getId())
+                        .tipo(TipoAlerta.COBRANCA)
+                        .canal(CanalAlerta.WHATSAPP)
+                        .destinatario(resolveDestinatarioWhatsapp(cobranca))
+                        .mensagem(buildMensagem(config.getTemplateWhatsapp(), cobranca))
+                        .statusEnvio(StatusEnvio.PENDENTE)
+                        .build();
+
+                alertaLogRepository.save(alertaWa);
+                criados++;
+            }
+
+            log.info("AlertaLog PENDENTE de cobrança criado: cobrancaId={}, diasRestantes={}, emAtraso={}",
+                    cobranca.getId(), diasRestantes, emAtraso);
+        }
+
+        log.info("Processamento diário de alertas de cobrança concluído: {} criado(s), {} ignorado(s) por snooze, {} ignorado(s) por duplicata",
+                criados, ignoradosSnooze, ignoradosDuplicado);
+    }
+
+    // -------------------------------------------------------------------------
     // Send pending alerts (called by scheduler after creating PENDENTE records)
     // -------------------------------------------------------------------------
 
@@ -373,6 +554,11 @@ public class AlertaService {
                         "Configuração de alerta não encontrada. Verifique a migração V4."));
     }
 
+    private Cobranca findCobrancaById(Long id) {
+        return cobrancaRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Cobrança", id));
+    }
+
     private Specification<Documento> buildDocumentosVencendoSpec(LocalDate today, LocalDate limite) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -417,6 +603,93 @@ public class AlertaService {
                 .replace("{{dias}}", String.valueOf(diasRestantes));
     }
 
+    /**
+     * Monta a mensagem de uma cobrança reaproveitando os mesmos templates dos documentos.
+     * Além de {{documento}}, {{cliente}} e {{dias}}, aceita {{cobranca}}, {{valor}} e {{vencimento}}.
+     * Quando a cobrança está em atraso, {{dias}} recebe o valor absoluto e um complemento
+     * explicando o atraso é acrescentado ao final.
+     */
+    private String buildMensagem(String template, Cobranca cobranca) {
+        if (template == null) {
+            return "";
+        }
+        LocalDate today = LocalDate.now();
+        LocalDate vencimento = cobranca.getDataVencimento();
+        long dias = vencimento != null ? ChronoUnit.DAYS.between(today, vencimento) : 0;
+        String descricao = descreverCobranca(cobranca);
+
+        String mensagem = template
+                .replace("{{documento}}", descricao)
+                .replace("{{cobranca}}", descricao)
+                .replace("{{cliente}}", resolveClienteNome(cobranca))
+                .replace("{{valor}}", formatarValor(cobranca.getValorEsperado()))
+                .replace("{{vencimento}}", vencimento != null
+                        ? vencimento.format(DATA_BR)
+                        : "")
+                .replace("{{dias}}", String.valueOf(Math.abs(dias)));
+
+        if (dias < 0) {
+            mensagem = mensagem + " (cobrança em atraso há " + Math.abs(dias) + " dia(s))";
+        }
+        return mensagem;
+    }
+
+    private String descreverCobranca(Cobranca cobranca) {
+        StringBuilder sb = new StringBuilder("Cobrança #").append(cobranca.getId());
+        if (cobranca.getContrato() != null && cobranca.getContrato().getDescricao() != null) {
+            sb.append(" - ").append(cobranca.getContrato().getDescricao());
+        }
+        return sb.toString();
+    }
+
+    private String formatarValor(BigDecimal valor) {
+        if (valor == null) {
+            return "R$ 0,00";
+        }
+        return String.format(LOCALE_BR, "R$ %,.2f", valor);
+    }
+
+    private Cliente resolveCliente(Cobranca cobranca) {
+        if (cobranca == null || cobranca.getContrato() == null) {
+            return null;
+        }
+        return cobranca.getContrato().getCliente();
+    }
+
+    private String resolveClienteNome(Cobranca cobranca) {
+        Cliente cliente = resolveCliente(cobranca);
+        return cliente != null && cliente.getRazaoSocial() != null ? cliente.getRazaoSocial() : "";
+    }
+
+    /**
+     * Destinatário de e-mail: contato principal do cliente do contrato; na ausência
+     * de um contato principal com e-mail, usa o primeiro contato com e-mail preenchido.
+     */
+    private String resolveDestinatario(Cobranca cobranca) {
+        return resolveContato(cobranca, Contato::getEmail);
+    }
+
+    private String resolveDestinatarioWhatsapp(Cobranca cobranca) {
+        return resolveContato(cobranca, Contato::getWhatsapp);
+    }
+
+    private String resolveContato(Cobranca cobranca, java.util.function.Function<Contato, String> extrator) {
+        Cliente cliente = resolveCliente(cobranca);
+        if (cliente == null || cliente.getContatos() == null) {
+            return null;
+        }
+        List<Contato> comValor = cliente.getContatos().stream()
+                .filter(c -> extrator.apply(c) != null && !extrator.apply(c).isBlank())
+                .collect(Collectors.toList());
+
+        return comValor.stream()
+                .filter(c -> Boolean.TRUE.equals(c.getPrincipal()))
+                .findFirst()
+                .or(() -> comValor.stream().findFirst())
+                .map(extrator)
+                .orElse(null);
+    }
+
     private String resolveDestinatario(Documento documento) {
         if (documento.getCliente() == null || documento.getCliente().getContatos() == null) {
             return null;
@@ -457,9 +730,43 @@ public class AlertaService {
                 .build();
     }
 
+    private AlertaPendenteResponse toAlertaPendenteResponse(Cobranca cobranca, LocalDate today) {
+        LocalDate vencimento = cobranca.getDataVencimento();
+        long diasRestantes = vencimento != null ? ChronoUnit.DAYS.between(today, vencimento) : 0;
+        String status = (vencimento != null && vencimento.isBefore(today)) ? "VENCIDO" : "A_VENCER";
+
+        Cliente cliente = resolveCliente(cobranca);
+
+        return AlertaPendenteResponse.builder()
+                .id(cobranca.getId())
+                .tipo(TipoAlerta.COBRANCA)
+                .nome(descreverCobranca(cobranca) + " - " + formatarValor(cobranca.getValorEsperado()))
+                .clienteNome(cliente != null ? cliente.getRazaoSocial() : null)
+                .dataVencimento(vencimento)
+                .diasRestantes((int) diasRestantes)
+                .status(status)
+                .build();
+    }
+
     private AlertaLogResponse toAlertaLogResponse(AlertaLog alertaLog) {
+        return toAlertaLogResponse(alertaLog, resolveCobrancaDoLog(alertaLog));
+    }
+
+    /**
+     * Carrega a cobrança referenciada pelo log apenas quando ele não é de documento,
+     * evitando consultas desnecessárias no fluxo majoritário (alertas de documento).
+     */
+    private Cobranca resolveCobrancaDoLog(AlertaLog alertaLog) {
+        if (alertaLog.getDocumento() != null || alertaLog.getCobrancaId() == null) {
+            return null;
+        }
+        return cobrancaRepository.findById(alertaLog.getCobrancaId()).orElse(null);
+    }
+
+    private AlertaLogResponse toAlertaLogResponse(AlertaLog alertaLog, Cobranca cobranca) {
         String documentoNome = null;
         String clienteNome = null;
+        String cobrancaDescricao = null;
         Long documentoId = null;
 
         if (alertaLog.getDocumento() != null) {
@@ -468,9 +775,16 @@ public class AlertaService {
             if (alertaLog.getDocumento().getCliente() != null) {
                 clienteNome = alertaLog.getDocumento().getCliente().getRazaoSocial();
             }
+        } else if (cobranca != null) {
+            cobrancaDescricao = descreverCobranca(cobranca);
+            Cliente cliente = resolveCliente(cobranca);
+            if (cliente != null) {
+                clienteNome = cliente.getRazaoSocial();
+            }
         }
 
         return AlertaLogResponse.builder()
+                .cobrancaDescricao(cobrancaDescricao)
                 .id(alertaLog.getId())
                 .documentoId(documentoId)
                 .documentoNome(documentoNome)

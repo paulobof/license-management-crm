@@ -23,6 +23,7 @@ public class CobrancaResponse {
     private LocalDate dataPagamento;
     private String formaPagamento;
     private String comprovanteDriveId;
+    private String comprovanteUrl;
     private StatusCobranca status;
     private StatusCobranca statusCalculado;
     private Long contratoId;

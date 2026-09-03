@@ -21,8 +21,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -246,5 +248,45 @@ class ContratoControllerTest {
         mockMvc.perform(post("/api/v1/contratos/1/gerar-cobrancas"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1));
+    }
+
+    // -------------------------------------------------------------------------
+    // Politica de papeis (item 3 do plano)
+    // -------------------------------------------------------------------------
+
+    private String preAuthorizeDe(String metodo) {
+        for (Method m : ContratoController.class.getDeclaredMethods()) {
+            if (m.getName().equals(metodo)) {
+                PreAuthorize annotation = m.getAnnotation(PreAuthorize.class);
+                return annotation != null ? annotation.value() : null;
+            }
+        }
+        throw new IllegalArgumentException("Metodo nao encontrado: " + metodo);
+    }
+
+    @Test
+    @DisplayName("politica de papeis — escrita e geracao de cobrancas liberadas para ADMIN e USUARIO")
+    void politicaDePapeis_contratos() {
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("create"))
+                .isEqualTo("hasAnyRole('ADMIN','USUARIO')");
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("update"))
+                .isEqualTo("hasAnyRole('ADMIN','USUARIO')");
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("gerarCobrancas"))
+                .isEqualTo("hasAnyRole('ADMIN','USUARIO')");
+    }
+
+    @Test
+    @DisplayName("politica de papeis — exclusao permanece restrita a ADMIN")
+    void politicaDePapeis_deleteApenasAdmin() {
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("delete"))
+                .isEqualTo("hasRole('ADMIN')");
+    }
+
+    @Test
+    @DisplayName("politica de papeis — leituras nao exigem @PreAuthorize")
+    void politicaDePapeis_leiturasSemPreAuthorize() {
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("findAll")).isNull();
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("findById")).isNull();
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("findByCliente")).isNull();
     }
 }

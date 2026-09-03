@@ -193,6 +193,12 @@ const AlertaConfig: React.FC = () => {
                   <code className="bg-gray-100 px-1 rounded">{'{{documento}}'}</code>{' '}
                   <code className="bg-gray-100 px-1 rounded">{'{{dias}}'}</code>
                 </p>
+                <p className="mt-1 text-xs text-gray-400">
+                  Em alertas de cobranca, <code className="bg-gray-100 px-1 rounded">{'{{documento}}'}</code>{' '}
+                  recebe a descricao da cobranca e tambem estao disponiveis{' '}
+                  <code className="bg-gray-100 px-1 rounded">{'{{valor}}'}</code> e{' '}
+                  <code className="bg-gray-100 px-1 rounded">{'{{vencimento}}'}</code>.
+                </p>
               </div>
 
               <div>
@@ -210,6 +216,12 @@ const AlertaConfig: React.FC = () => {
                   Variaveis disponiveis: <code className="bg-gray-100 px-1 rounded">{'{{cliente}}'}</code>{' '}
                   <code className="bg-gray-100 px-1 rounded">{'{{documento}}'}</code>{' '}
                   <code className="bg-gray-100 px-1 rounded">{'{{dias}}'}</code>
+                </p>
+                <p className="mt-1 text-xs text-gray-400">
+                  Em alertas de cobranca, <code className="bg-gray-100 px-1 rounded">{'{{documento}}'}</code>{' '}
+                  recebe a descricao da cobranca e tambem estao disponiveis{' '}
+                  <code className="bg-gray-100 px-1 rounded">{'{{valor}}'}</code> e{' '}
+                  <code className="bg-gray-100 px-1 rounded">{'{{vencimento}}'}</code>.
                 </p>
               </div>
             </div>

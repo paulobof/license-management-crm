@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Pencil, RefreshCw } from 'lucide-react';
-import type { Contrato, Cobranca, StatusContrato, StatusCobranca } from '../../types';
+import { ArrowLeft, Pencil, RefreshCw, Paperclip } from 'lucide-react';
+import type { Contrato, StatusContrato, StatusCobranca } from '../../types';
 import * as contratosApi from '../../api/contratos';
 import * as cobrancasApi from '../../api/cobrancas';
+import type { CobrancaComComprovante } from '../../api/cobrancas';
 import Button from '../../components/ui/Button';
 import Table from '../../components/ui/Table';
 import Modal from '../../components/ui/Modal';
@@ -63,22 +64,25 @@ interface PagamentoForm {
   formaPagamento: string;
 }
 
+const MAX_COMPROVANTE_BYTES = 30 * 1024 * 1024;
+
 const ContratoDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   const [contrato, setContrato] = useState<Contrato | null>(null);
-  const [cobrancas, setCobrancas] = useState<Cobranca[]>([]);
+  const [cobrancas, setCobrancas] = useState<CobrancaComComprovante[]>([]);
   const [loading, setLoading] = useState(true);
   const [gerandoCobrancas, setGerandoCobrancas] = useState(false);
 
   const [pagamentoModal, setPagamentoModal] = useState(false);
-  const [cobrancaSelecionada, setCobrancaSelecionada] = useState<Cobranca | null>(null);
+  const [cobrancaSelecionada, setCobrancaSelecionada] = useState<CobrancaComComprovante | null>(null);
   const [pagamentoForm, setPagamentoForm] = useState<PagamentoForm>({
     valorRecebido: '',
     dataPagamento: '',
     formaPagamento: 'PIX',
   });
+  const [comprovanteFile, setComprovanteFile] = useState<File | null>(null);
   const [salvandoPagamento, setSalvandoPagamento] = useState(false);
   const [pagamentoError, setPagamentoError] = useState('');
 
@@ -117,13 +121,14 @@ const ContratoDetail: React.FC = () => {
     }
   };
 
-  const openPagamentoModal = (cobranca: Cobranca) => {
+  const openPagamentoModal = (cobranca: CobrancaComComprovante) => {
     setCobrancaSelecionada(cobranca);
     setPagamentoForm({
       valorRecebido: String(cobranca.valorEsperado),
       dataPagamento: new Date().toISOString().split('T')[0],
       formaPagamento: 'PIX',
     });
+    setComprovanteFile(null);
     setPagamentoError('');
     setPagamentoModal(true);
   };
@@ -138,15 +143,24 @@ const ContratoDetail: React.FC = () => {
       setPagamentoError('Data de pagamento e obrigatoria.');
       return;
     }
+    if (comprovanteFile && comprovanteFile.size > MAX_COMPROVANTE_BYTES) {
+      setPagamentoError('O comprovante deve ter no maximo 30 MB.');
+      return;
+    }
     setSalvandoPagamento(true);
     setPagamentoError('');
     try {
-      await cobrancasApi.registrarPagamento(cobrancaSelecionada.id, {
-        valorRecebido: Number(pagamentoForm.valorRecebido),
-        dataPagamento: pagamentoForm.dataPagamento,
-        formaPagamento: pagamentoForm.formaPagamento,
-      });
+      await cobrancasApi.registrarPagamento(
+        cobrancaSelecionada.id,
+        {
+          valorRecebido: Number(pagamentoForm.valorRecebido),
+          dataPagamento: pagamentoForm.dataPagamento,
+          formaPagamento: pagamentoForm.formaPagamento,
+        },
+        comprovanteFile
+      );
       setPagamentoModal(false);
+      setComprovanteFile(null);
       if (contrato) await fetchCobrancas(contrato.id);
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { message?: string } } };
@@ -160,31 +174,31 @@ const ContratoDetail: React.FC = () => {
     {
       key: 'dataVencimento',
       header: 'Vencimento',
-      render: (row: Cobranca) => <span>{formatDate(row.dataVencimento)}</span>,
+      render: (row: CobrancaComComprovante) => <span>{formatDate(row.dataVencimento)}</span>,
     },
     {
       key: 'valorEsperado',
       header: 'Valor Esperado',
-      render: (row: Cobranca) => (
+      render: (row: CobrancaComComprovante) => (
         <span className="font-mono text-gray-800">{formatBRL(row.valorEsperado)}</span>
       ),
     },
     {
       key: 'valorRecebido',
       header: 'Valor Recebido',
-      render: (row: Cobranca) => (
+      render: (row: CobrancaComComprovante) => (
         <span className="font-mono text-gray-800">{formatBRL(row.valorRecebido)}</span>
       ),
     },
     {
       key: 'statusCalculado',
       header: 'Status',
-      render: (row: Cobranca) => <StatusBadge status={row.statusCalculado} />,
+      render: (row: CobrancaComComprovante) => <StatusBadge status={row.statusCalculado} />,
     },
     {
       key: 'dataPagamento',
       header: 'Pagamento',
-      render: (row: Cobranca) => (
+      render: (row: CobrancaComComprovante) => (
         <span className="text-gray-600">
           {row.dataPagamento ? formatDate(row.dataPagamento) : '—'}
           {row.formaPagamento ? ` — ${row.formaPagamento}` : ''}
@@ -192,10 +206,29 @@ const ContratoDetail: React.FC = () => {
       ),
     },
     {
+      key: 'comprovante',
+      header: 'Comprovante',
+      render: (row: CobrancaComComprovante) =>
+        row.comprovanteUrl ? (
+          <a
+            href={row.comprovanteUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sm text-red-600 hover:text-red-700 hover:underline"
+            title="Abrir comprovante no Google Drive"
+          >
+            <Paperclip size={14} />
+            Ver
+          </a>
+        ) : (
+          <span className="text-gray-400">—</span>
+        ),
+    },
+    {
       key: 'acoes',
       header: 'Acoes',
       className: 'text-right',
-      render: (row: Cobranca) => (
+      render: (row: CobrancaComComprovante) => (
         <div className="flex items-center justify-end">
           {row.statusCalculado !== 'PAGO' && row.statusCalculado !== 'CANCELADO' && (
             <Button
@@ -385,6 +418,22 @@ const ContratoDetail: React.FC = () => {
               <option value="DINHEIRO">Dinheiro</option>
               <option value="OUTRO">Outro</option>
             </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Comprovante (opcional)
+            </label>
+            <input
+              type="file"
+              onChange={(e) => {
+                setComprovanteFile(e.target.files?.[0] ?? null);
+                setPagamentoError('');
+              }}
+              className="w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-red-50 file:text-red-700 hover:file:bg-red-100 cursor-pointer"
+            />
+            <p className="mt-1 text-xs text-gray-400">
+              Anexe o comprovante de pagamento (ate 30 MB). O arquivo e enviado ao Google Drive.
+            </p>
           </div>
           {pagamentoError && (
             <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">

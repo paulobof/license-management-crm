@@ -16,6 +16,18 @@ public interface CobrancaRepository extends JpaRepository<Cobranca, Long>, JpaSp
 
     List<Cobranca> findTop500ByContratoId(Long contratoId);
 
+    /**
+     * Cobranças ainda em aberto com vencimento até a data limite — cobre tanto as
+     * que estão vencendo dentro da janela de antecedência quanto as já em atraso.
+     */
+    List<Cobranca> findTop500ByStatusAndDataVencimentoLessThanEqualOrderByDataVencimentoAsc(
+            StatusCobranca status, LocalDate limite);
+
+    /**
+     * Quantidade de cobranças em aberto cujo vencimento já passou.
+     */
+    long countByStatusAndDataVencimentoBefore(StatusCobranca status, LocalDate data);
+
     @Query("SELECT CASE WHEN COUNT(c) > 0 THEN true ELSE false END FROM Cobranca c " +
            "WHERE c.contrato.cliente.id = :clienteId AND c.status = :status")
     boolean existsByClienteIdAndStatus(@Param("clienteId") Long clienteId, @Param("status") StatusCobranca status);

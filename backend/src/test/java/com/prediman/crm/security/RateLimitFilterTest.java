@@ -10,9 +10,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.lang.reflect.Constructor;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -147,5 +153,133 @@ class RateLimitFilterTest {
 
         verify(filterChain).doFilter(request, response);
         verify(request, never()).getRemoteAddr();
+    }
+
+    // -------------------------------------------------------------------------
+    // forgot-password: limite mais restrito (spam de e-mail / enumeração de contas)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void forgotPassword_bloqueiaAposTresRequisicoes() throws Exception {
+        StringWriter body = new StringWriter();
+        PrintWriter writer = new PrintWriter(body);
+
+        when(request.getRequestURI()).thenReturn(RateLimitFilter.FORGOT_PASSWORD_PATH);
+        when(request.getHeader("X-Forwarded-For")).thenReturn(null);
+        when(request.getRemoteAddr()).thenReturn(CLIENT_IP);
+        when(response.getWriter()).thenReturn(writer);
+
+        for (int i = 0; i < 4; i++) {
+            rateLimitFilter.doFilterInternal(request, response, filterChain);
+        }
+
+        // apenas as 3 primeiras passam
+        verify(filterChain, org.mockito.Mockito.times(3)).doFilter(request, response);
+        verify(response, atLeastOnce()).setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
+        writer.flush();
+        org.junit.jupiter.api.Assertions.assertTrue(
+                body.toString().contains("recuperação de senha"),
+                "Mensagem específica de forgot-password esperada, mas veio: " + body);
+    }
+
+    @Test
+    void forgotPassword_temContadorIndependenteDosDemaisEndpointsDeAuth() throws Exception {
+        StringWriter body = new StringWriter();
+        when(request.getRequestURI()).thenReturn(RateLimitFilter.FORGOT_PASSWORD_PATH);
+        when(request.getHeader("X-Forwarded-For")).thenReturn(null);
+        when(request.getRemoteAddr()).thenReturn(CLIENT_IP);
+        when(response.getWriter()).thenReturn(new PrintWriter(body));
+
+        // esgota o limite do forgot-password
+        for (int i = 0; i < 4; i++) {
+            rateLimitFilter.doFilterInternal(request, response, filterChain);
+        }
+
+        HttpServletRequest loginRequest = org.mockito.Mockito.mock(HttpServletRequest.class);
+        when(loginRequest.getRequestURI()).thenReturn(AUTH_PATH);
+        when(loginRequest.getHeader("X-Forwarded-For")).thenReturn(null);
+        when(loginRequest.getRemoteAddr()).thenReturn(CLIENT_IP);
+
+        rateLimitFilter.doFilterInternal(loginRequest, response, filterChain);
+
+        // 3 do forgot-password + 1 do login
+        verify(filterChain, org.mockito.Mockito.times(4)).doFilter(org.mockito.Mockito.any(),
+                org.mockito.Mockito.eq(response));
+    }
+
+    // -------------------------------------------------------------------------
+    // X-Forwarded-For vazio deve cair no remoteAddr
+    // -------------------------------------------------------------------------
+
+    @Test
+    void xForwardedForVazio_usaRemoteAddr() throws Exception {
+        when(request.getRequestURI()).thenReturn(AUTH_PATH);
+        when(request.getHeader("X-Forwarded-For")).thenReturn("");
+        when(request.getRemoteAddr()).thenReturn(CLIENT_IP);
+
+        rateLimitFilter.doFilterInternal(request, response, filterChain);
+
+        verify(request).getRemoteAddr();
+        verify(filterChain).doFilter(request, response);
+
+        Map<String, ?> clients = readClients();
+        assertThat(clients).containsOnlyKeys("auth|" + CLIENT_IP);
+    }
+
+    // -------------------------------------------------------------------------
+    // Janela expirada deve reiniciar o contador do IP
+    // -------------------------------------------------------------------------
+
+    @Test
+    void janelaExpirada_reiniciaContadorEPermiteRequisicao() throws Exception {
+        // Simula um bucket saturado cuja janela de 1 minuto já expirou
+        seedEntry("auth|" + CLIENT_IP, System.currentTimeMillis() - 120_000L, 10);
+
+        when(request.getRequestURI()).thenReturn(AUTH_PATH);
+        when(request.getHeader("X-Forwarded-For")).thenReturn(null);
+        when(request.getRemoteAddr()).thenReturn(CLIENT_IP);
+
+        rateLimitFilter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
+        verify(response, never()).setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
+        assertThat(readCount("auth|" + CLIENT_IP)).isEqualTo(1);
+    }
+
+    @Test
+    void janelaAindaValida_mantemContadorAcumulado() throws Exception {
+        // Mesma janela: a contagem anterior deve ser preservada e incrementada
+        seedEntry("auth|" + CLIENT_IP, System.currentTimeMillis(), 4);
+
+        when(request.getRequestURI()).thenReturn(AUTH_PATH);
+        when(request.getHeader("X-Forwarded-For")).thenReturn(null);
+        when(request.getRemoteAddr()).thenReturn(CLIENT_IP);
+
+        rateLimitFilter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain).doFilter(request, response);
+        assertThat(readCount("auth|" + CLIENT_IP)).isEqualTo(5);
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers de acesso ao estado interno do filtro
+    // -------------------------------------------------------------------------
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> readClients() {
+        return (Map<String, Object>) ReflectionTestUtils.getField(rateLimitFilter, "clients");
+    }
+
+    private void seedEntry(String key, long windowStart, int count) throws Exception {
+        Class<?> entryClass = Class.forName("com.prediman.crm.security.RateLimitFilter$RateLimitEntry");
+        Constructor<?> constructor = entryClass.getDeclaredConstructor(long.class, AtomicInteger.class);
+        constructor.setAccessible(true);
+        readClients().put(key, constructor.newInstance(windowStart, new AtomicInteger(count)));
+    }
+
+    private int readCount(String key) {
+        Object entry = readClients().get(key);
+        assertThat(entry).isNotNull();
+        return ((AtomicInteger) ReflectionTestUtils.getField(entry, "count")).get();
     }
 }

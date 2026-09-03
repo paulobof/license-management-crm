@@ -47,6 +47,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.lenient;
 
@@ -65,6 +66,9 @@ class ClienteServiceTest {
 
     @Mock
     private ClienteMapper clienteMapper;
+
+    @Mock
+    private GoogleDriveService googleDriveService;
 
     @InjectMocks
     private ClienteService clienteService;
@@ -661,5 +665,260 @@ class ClienteServiceTest {
     @DisplayName("specificationLambda com search e status executa ambos predicados")
     void specificationLambda_comSearchEStatus_executa() {
         invokeSpec(captureSpec("teste", StatusCliente.INATIVO));
+    }
+
+    // ---------------------------------------------------------------------------
+    // Integracao com o Google Drive (pasta por cliente)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("create com Drive habilitado cria a pasta do cliente e persiste o id")
+    void create_driveHabilitado_criaPastaEPersisteId() {
+        ClienteRequest request = buildRequest(null, null);
+        Cliente entity = buildCliente(7L, StatusCliente.ATIVO);
+        ClienteResponse response = buildResponse(7L, StatusCliente.ATIVO);
+
+        when(clienteMapper.toEntity(request)).thenReturn(entity);
+        when(clienteRepository.save(entity)).thenReturn(entity);
+        when(clienteMapper.toResponse(entity)).thenReturn(response);
+        when(googleDriveService.isEnabled()).thenReturn(true);
+        when(googleDriveService.createFolder("0007 - Empresa Teste", null)).thenReturn("folder-7");
+
+        clienteService.create(request);
+
+        assertThat(entity.getGoogleDriveFolderId()).isEqualTo("folder-7");
+        verify(googleDriveService).createFolder("0007 - Empresa Teste", null);
+        verify(clienteRepository, times(2)).save(entity);
+    }
+
+    @Test
+    @DisplayName("create usa razao social quando nao ha nome fantasia")
+    void create_semNomeFantasia_usaRazaoSocial() {
+        ClienteRequest request = buildRequest(null, null);
+        Cliente entity = Cliente.builder()
+                .id(12L)
+                .razaoSocial("Empresa Teste LTDA")
+                .nomeFantasia("   ")
+                .status(StatusCliente.ATIVO)
+                .build();
+
+        when(clienteMapper.toEntity(request)).thenReturn(entity);
+        when(clienteRepository.save(entity)).thenReturn(entity);
+        when(clienteMapper.toResponse(entity)).thenReturn(buildResponse(12L, StatusCliente.ATIVO));
+        when(googleDriveService.isEnabled()).thenReturn(true);
+        when(googleDriveService.createFolder(anyString(), isNull())).thenReturn("folder-12");
+
+        clienteService.create(request);
+
+        verify(googleDriveService).createFolder("0012 - Empresa Teste LTDA", null);
+    }
+
+    @Test
+    @DisplayName("create nao chama o Drive quando o request ja trouxe googleDriveFolderId")
+    void create_comPastaInformada_naoChamaDrive() {
+        ClienteRequest request = buildRequest(null, null);
+        Cliente entity = buildCliente(3L, StatusCliente.ATIVO);
+        entity.setGoogleDriveFolderId("folder-existente");
+
+        when(clienteMapper.toEntity(request)).thenReturn(entity);
+        when(clienteRepository.save(entity)).thenReturn(entity);
+        when(clienteMapper.toResponse(entity)).thenReturn(buildResponse(3L, StatusCliente.ATIVO));
+
+        clienteService.create(request);
+
+        verify(googleDriveService, never()).createFolder(anyString(), any());
+        verify(clienteRepository, times(1)).save(entity);
+    }
+
+    @Test
+    @DisplayName("create com Drive desabilitado apenas persiste o cliente")
+    void create_driveDesabilitado_naoCriaPasta() {
+        ClienteRequest request = buildRequest(null, null);
+        Cliente entity = buildCliente(4L, StatusCliente.ATIVO);
+
+        when(clienteMapper.toEntity(request)).thenReturn(entity);
+        when(clienteRepository.save(entity)).thenReturn(entity);
+        when(clienteMapper.toResponse(entity)).thenReturn(buildResponse(4L, StatusCliente.ATIVO));
+        when(googleDriveService.isEnabled()).thenReturn(false);
+
+        clienteService.create(request);
+
+        assertThat(entity.getGoogleDriveFolderId()).isNull();
+        verify(googleDriveService, never()).createFolder(anyString(), any());
+    }
+
+    @Test
+    @DisplayName("create segue normalmente quando o Drive nao retorna id de pasta")
+    void create_drivePastaNula_naoAborta() {
+        ClienteRequest request = buildRequest(null, null);
+        Cliente entity = buildCliente(5L, StatusCliente.ATIVO);
+
+        when(clienteMapper.toEntity(request)).thenReturn(entity);
+        when(clienteRepository.save(entity)).thenReturn(entity);
+        when(clienteMapper.toResponse(entity)).thenReturn(buildResponse(5L, StatusCliente.ATIVO));
+        when(googleDriveService.isEnabled()).thenReturn(true);
+        when(googleDriveService.createFolder(anyString(), isNull())).thenReturn("  ");
+
+        ClienteResponse result = clienteService.create(request);
+
+        assertThat(result).isNotNull();
+        assertThat(entity.getGoogleDriveFolderId()).isNull();
+        verify(clienteRepository, times(1)).save(entity);
+    }
+
+    @Test
+    @DisplayName("create nao aborta quando o Drive lanca excecao")
+    void create_driveComFalha_naoAborta() {
+        ClienteRequest request = buildRequest(null, null);
+        Cliente entity = buildCliente(6L, StatusCliente.ATIVO);
+        ClienteResponse response = buildResponse(6L, StatusCliente.ATIVO);
+
+        when(clienteMapper.toEntity(request)).thenReturn(entity);
+        when(clienteRepository.save(entity)).thenReturn(entity);
+        when(clienteMapper.toResponse(entity)).thenReturn(response);
+        when(googleDriveService.isEnabled()).thenReturn(true);
+        when(googleDriveService.createFolder(anyString(), isNull()))
+                .thenThrow(new IllegalStateException("indisponivel"));
+
+        ClienteResponse result = clienteService.create(request);
+
+        assertThat(result).isEqualTo(response);
+        assertThat(entity.getGoogleDriveFolderId()).isNull();
+    }
+
+    @Test
+    @DisplayName("obterOuCriarPastaDrive retorna a pasta ja existente sem chamar o Drive")
+    void obterOuCriarPastaDrive_pastaExistente() {
+        Cliente cliente = buildCliente(1L, StatusCliente.ATIVO);
+        cliente.setGoogleDriveFolderId("folder-1");
+
+        when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
+
+        assertThat(clienteService.obterOuCriarPastaDrive(1L)).isEqualTo("folder-1");
+        verify(googleDriveService, never()).createFolder(anyString(), any());
+    }
+
+    @Test
+    @DisplayName("obterOuCriarPastaDrive cria a pasta sob demanda quando ausente")
+    void obterOuCriarPastaDrive_criaSobDemanda() {
+        Cliente cliente = buildCliente(2L, StatusCliente.ATIVO);
+
+        when(clienteRepository.findById(2L)).thenReturn(Optional.of(cliente));
+        when(googleDriveService.isEnabled()).thenReturn(true);
+        when(googleDriveService.createFolder("0002 - Empresa Teste", null)).thenReturn("folder-2");
+        when(clienteRepository.save(cliente)).thenReturn(cliente);
+
+        assertThat(clienteService.obterOuCriarPastaDrive(2L)).isEqualTo("folder-2");
+        assertThat(cliente.getGoogleDriveFolderId()).isEqualTo("folder-2");
+        verify(clienteRepository).save(cliente);
+    }
+
+    @Test
+    @DisplayName("obterOuCriarPastaDrive retorna null quando o Drive esta desabilitado")
+    void obterOuCriarPastaDrive_driveDesabilitado() {
+        Cliente cliente = buildCliente(2L, StatusCliente.ATIVO);
+
+        when(clienteRepository.findById(2L)).thenReturn(Optional.of(cliente));
+        when(googleDriveService.isEnabled()).thenReturn(false);
+
+        assertThat(clienteService.obterOuCriarPastaDrive(2L)).isNull();
+    }
+
+    @Test
+    @DisplayName("obterOuCriarPastaDrive lanca ResourceNotFoundException para cliente inexistente")
+    void obterOuCriarPastaDrive_clienteInexistente() {
+        when(clienteRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> clienteService.obterOuCriarPastaDrive(99L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("montarNomePasta formata o id com quatro digitos")
+    void montarNomePasta_formataId() {
+        Cliente cliente = buildCliente(123L, StatusCliente.ATIVO);
+        assertThat(ClienteService.montarNomePasta(cliente)).isEqualTo("0123 - Empresa Teste");
+
+        cliente.setNomeFantasia(null);
+        assertThat(ClienteService.montarNomePasta(cliente)).isEqualTo("0123 - Empresa Teste LTDA");
+    }
+
+    // ---------------------------------------------------------------------------
+    // Cobertura de ramos: CPF não duplicado e cobranças não pagas
+    // ---------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("create com CPF ainda não cadastrado persiste o cliente")
+    void create_cpfNaoDuplicado_persisteCliente() {
+        ClienteRequest request = buildRequest(null, "123.456.789-00");
+        Cliente entity = buildCliente(30L, StatusCliente.ATIVO);
+        ClienteResponse response = buildResponse(30L, StatusCliente.ATIVO);
+
+        when(clienteRepository.existsByCpf("123.456.789-00")).thenReturn(false);
+        when(clienteMapper.toEntity(request)).thenReturn(entity);
+        when(clienteRepository.save(entity)).thenReturn(entity);
+        when(clienteMapper.toResponse(entity)).thenReturn(response);
+
+        ClienteResponse result = clienteService.create(request);
+
+        assertThat(result.getId()).isEqualTo(30L);
+        verify(clienteRepository).existsByCpf("123.456.789-00");
+        verify(clienteRepository).save(entity);
+    }
+
+    @Test
+    @DisplayName("update com CPF ainda não usado por outro cliente atualiza o cliente")
+    void update_cpfNaoDuplicado_atualizaCliente() {
+        Long id = 31L;
+        ClienteRequest request = buildRequest(null, "123.456.789-00");
+
+        Cliente entity = buildCliente(id, StatusCliente.ATIVO);
+        entity.setContatos(new ArrayList<>());
+        entity.setEnderecos(new ArrayList<>());
+        ClienteResponse response = buildResponse(id, StatusCliente.ATIVO);
+
+        when(clienteRepository.findById(id)).thenReturn(Optional.of(entity));
+        when(clienteRepository.existsByCpfAndIdNot("123.456.789-00", id)).thenReturn(false);
+        when(clienteRepository.save(entity)).thenReturn(entity);
+        when(clienteMapper.toResponse(entity)).thenReturn(response);
+
+        ClienteResponse result = clienteService.update(id, request);
+
+        assertThat(result.getId()).isEqualTo(id);
+        assertThat(entity.getCpf()).isEqualTo("123.456.789-00");
+        verify(clienteRepository).save(entity);
+    }
+
+    @Test
+    @DisplayName("delete com contrato encerrado e cobranças não pagas remove o cliente")
+    void delete_comCobrancasNaoPagas_removeCliente() {
+        Long id = 32L;
+        Cliente entity = buildCliente(id, StatusCliente.INATIVO);
+
+        Cobranca cobrancaPendente = Cobranca.builder()
+                .id(1L)
+                .status(StatusCobranca.PENDENTE)
+                .valorEsperado(BigDecimal.TEN)
+                .build();
+        Cobranca cobrancaCancelada = Cobranca.builder()
+                .id(2L)
+                .status(StatusCobranca.CANCELADO)
+                .valorEsperado(BigDecimal.ONE)
+                .build();
+
+        Contrato contratoEncerrado = Contrato.builder()
+                .id(3L)
+                .status(StatusContrato.ENCERRADO)
+                .descricao("Contrato encerrado")
+                .valor(BigDecimal.TEN)
+                .cobrancas(new ArrayList<>(List.of(cobrancaPendente, cobrancaCancelada)))
+                .build();
+        entity.getContratos().add(contratoEncerrado);
+
+        when(clienteRepository.findById(id)).thenReturn(Optional.of(entity));
+
+        clienteService.delete(id);
+
+        verify(clienteRepository).delete(entity);
     }
 }

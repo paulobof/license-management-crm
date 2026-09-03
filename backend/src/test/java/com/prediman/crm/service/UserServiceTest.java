@@ -11,6 +11,7 @@ import com.prediman.crm.repository.UsuarioRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -28,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -42,6 +44,9 @@ class UserServiceTest {
 
     @Mock
     private UsuarioMapper usuarioMapper;
+
+    @Mock
+    private EmailService emailService;
 
     @InjectMocks
     private UserService userService;
@@ -122,6 +127,92 @@ class UserServiceTest {
 
         verify(usuarioRepository, never()).save(any());
         verify(passwordEncoder, never()).encode(anyString());
+        verify(emailService, never()).enviar(anyString(), anyString(), anyString());
+    }
+
+    // ---------------------------------------------------------------------------
+    // create — e-mail de boas-vindas
+    // ---------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("create envia e-mail de boas-vindas com nome, e-mail de acesso e senha inicial")
+    void create_enviaEmailDeBoasVindasComCredenciais() {
+        UsuarioRequest request = UsuarioRequest.builder()
+                .nome("Novo Usuário")
+                .email("novo@prediman.com")
+                .senha("senha12345")
+                .perfil(Perfil.USUARIO)
+                .build();
+
+        Usuario savedEntity = buildUsuario(10L, "novo@prediman.com", Perfil.USUARIO, true);
+        when(usuarioRepository.existsByEmail("novo@prediman.com")).thenReturn(false);
+        when(passwordEncoder.encode("senha12345")).thenReturn("hashed-senha");
+        when(usuarioRepository.save(any(Usuario.class))).thenReturn(savedEntity);
+        when(usuarioMapper.toResponse(savedEntity))
+                .thenReturn(buildResponse(10L, "novo@prediman.com", Perfil.USUARIO, true));
+        when(emailService.enviar(anyString(), anyString(), anyString())).thenReturn(true);
+
+        userService.create(request);
+
+        ArgumentCaptor<String> assuntoCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> mensagemCaptor = ArgumentCaptor.forClass(String.class);
+        verify(emailService).enviar(eq("novo@prediman.com"), assuntoCaptor.capture(), mensagemCaptor.capture());
+
+        assertThat(assuntoCaptor.getValue()).contains("Bem-vindo");
+        String mensagem = mensagemCaptor.getValue();
+        assertThat(mensagem).contains("Nome Teste");
+        assertThat(mensagem).contains("novo@prediman.com");
+        assertThat(mensagem).contains("senha12345");
+        assertThat(mensagem).contains("Esqueci minha senha");
+    }
+
+    @Test
+    @DisplayName("create conclui mesmo quando o envio do e-mail de boas-vindas retorna false")
+    void create_envioDeEmailRetornaFalse_naoAbortaCriacao() {
+        UsuarioRequest request = UsuarioRequest.builder()
+                .nome("Novo Usuário")
+                .email("novo@prediman.com")
+                .senha("senha12345")
+                .perfil(Perfil.USUARIO)
+                .build();
+
+        Usuario savedEntity = buildUsuario(11L, "novo@prediman.com", Perfil.USUARIO, true);
+        UsuarioResponse response = buildResponse(11L, "novo@prediman.com", Perfil.USUARIO, true);
+        when(usuarioRepository.existsByEmail("novo@prediman.com")).thenReturn(false);
+        when(passwordEncoder.encode("senha12345")).thenReturn("hashed-senha");
+        when(usuarioRepository.save(any(Usuario.class))).thenReturn(savedEntity);
+        when(usuarioMapper.toResponse(savedEntity)).thenReturn(response);
+        when(emailService.enviar(anyString(), anyString(), anyString())).thenReturn(false);
+
+        UsuarioResponse result = userService.create(request);
+
+        assertThat(result).isEqualTo(response);
+        verify(usuarioRepository).save(any(Usuario.class));
+    }
+
+    @Test
+    @DisplayName("create conclui mesmo quando o envio do e-mail de boas-vindas lança exceção")
+    void create_envioDeEmailLancaExcecao_naoAbortaCriacao() {
+        UsuarioRequest request = UsuarioRequest.builder()
+                .nome("Novo Usuário")
+                .email("novo@prediman.com")
+                .senha("senha12345")
+                .perfil(Perfil.USUARIO)
+                .build();
+
+        Usuario savedEntity = buildUsuario(12L, "novo@prediman.com", Perfil.USUARIO, true);
+        UsuarioResponse response = buildResponse(12L, "novo@prediman.com", Perfil.USUARIO, true);
+        when(usuarioRepository.existsByEmail("novo@prediman.com")).thenReturn(false);
+        when(passwordEncoder.encode("senha12345")).thenReturn("hashed-senha");
+        when(usuarioRepository.save(any(Usuario.class))).thenReturn(savedEntity);
+        when(usuarioMapper.toResponse(savedEntity)).thenReturn(response);
+        when(emailService.enviar(anyString(), anyString(), anyString()))
+                .thenThrow(new IllegalStateException("SMTP indisponível"));
+
+        UsuarioResponse result = userService.create(request);
+
+        assertThat(result).isEqualTo(response);
+        verify(usuarioRepository).save(any(Usuario.class));
     }
 
     // ---------------------------------------------------------------------------
@@ -381,5 +472,30 @@ class UserServiceTest {
         assertThat(result).isNotNull();
         verify(usuarioRepository, never()).countByPerfilAndAtivoTrue(any());
         verify(usuarioRepository).save(admin);
+    }
+
+    @Test
+    @DisplayName("update com novo e-mail ainda disponível atualiza o usuário")
+    void update_novoEmailDisponivel_atualizaUsuario() {
+        Long id = 6L;
+        Usuario entity = buildUsuario(id, "user@prediman.com", Perfil.USUARIO, true);
+        UsuarioUpdateRequest request = UsuarioUpdateRequest.builder()
+                .nome("Nome Novo")
+                .email("novo@prediman.com")
+                .perfil(Perfil.USUARIO)
+                .build();
+
+        when(usuarioRepository.findById(id)).thenReturn(Optional.of(entity));
+        when(usuarioRepository.existsByEmail("novo@prediman.com")).thenReturn(false);
+        when(usuarioRepository.save(entity)).thenReturn(entity);
+        UsuarioResponse response = buildResponse(id, "novo@prediman.com", Perfil.USUARIO, true);
+        when(usuarioMapper.toResponse(entity)).thenReturn(response);
+
+        UsuarioResponse result = userService.update(id, request);
+
+        assertThat(result.getEmail()).isEqualTo("novo@prediman.com");
+        assertThat(entity.getEmail()).isEqualTo("novo@prediman.com");
+        assertThat(entity.getNome()).isEqualTo("Nome Novo");
+        verify(usuarioRepository).save(entity);
     }
 }

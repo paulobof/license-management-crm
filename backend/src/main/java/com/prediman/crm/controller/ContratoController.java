@@ -49,13 +49,13 @@ public class ContratoController {
     }
 
     @PostMapping("/contratos")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
     public ResponseEntity<ContratoResponse> create(@Valid @RequestBody ContratoRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(contratoService.create(request));
     }
 
     @PutMapping("/contratos/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
     public ResponseEntity<ContratoResponse> update(@PathVariable Long id,
                                                     @Valid @RequestBody ContratoRequest request) {
         return ResponseEntity.ok(contratoService.update(id, request));
@@ -69,7 +69,7 @@ public class ContratoController {
     }
 
     @PostMapping("/contratos/{id}/gerar-cobrancas")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
     public ResponseEntity<ContratoResponse> gerarCobrancas(@PathVariable Long id) {
         return ResponseEntity.ok(contratoService.gerarCobrancasMensais(id));
     }

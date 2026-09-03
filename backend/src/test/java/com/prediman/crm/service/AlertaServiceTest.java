@@ -8,13 +8,17 @@ import com.prediman.crm.dto.NotificacaoSummaryResponse;
 import com.prediman.crm.exception.ResourceNotFoundException;
 import com.prediman.crm.model.AlertaLog;
 import com.prediman.crm.model.Cliente;
+import com.prediman.crm.model.Cobranca;
 import com.prediman.crm.model.ConfiguracaoAlerta;
 import com.prediman.crm.model.Contato;
+import com.prediman.crm.model.Contrato;
 import com.prediman.crm.model.Documento;
 import com.prediman.crm.model.enums.CanalAlerta;
+import com.prediman.crm.model.enums.StatusCobranca;
 import com.prediman.crm.model.enums.StatusEnvio;
 import com.prediman.crm.model.enums.TipoAlerta;
 import com.prediman.crm.repository.AlertaLogRepository;
+import com.prediman.crm.repository.CobrancaRepository;
 import com.prediman.crm.repository.ConfiguracaoAlertaRepository;
 import com.prediman.crm.repository.DocumentoRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +39,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -67,6 +72,9 @@ class AlertaServiceTest {
 
     @Mock
     private DocumentoRepository documentoRepository;
+
+    @Mock
+    private CobrancaRepository cobrancaRepository;
 
     @Mock
     private EmailService emailService;
@@ -1198,5 +1206,879 @@ class AlertaServiceTest {
         ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
         verify(alertaLogRepository).save(captor.capture());
         assertThat(captor.getValue().getDestinatario()).isNull();
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers de cobranca
+    // -------------------------------------------------------------------------
+
+    private Cobranca cobrancaEm(LocalDate vencimento, String emailPrincipal) {
+        Contato secundario = new Contato();
+        secundario.setEmail("secundario@empresa.com");
+        secundario.setWhatsapp("5511000000000");
+        secundario.setPrincipal(false);
+
+        Contato principal = new Contato();
+        principal.setEmail(emailPrincipal);
+        principal.setWhatsapp("5511999999999");
+        principal.setPrincipal(true);
+
+        Cliente cliente = Cliente.builder()
+                .id(77L)
+                .razaoSocial("Cliente Financeiro Ltda")
+                .contatos(List.of(secundario, principal))
+                .build();
+
+        Contrato contrato = Contrato.builder()
+                .id(55L)
+                .descricao("Contrato de Licenciamento")
+                .valor(new BigDecimal("1500.00"))
+                .cliente(cliente)
+                .build();
+
+        return Cobranca.builder()
+                .id(500L)
+                .contrato(contrato)
+                .valorEsperado(new BigDecimal("1500.00"))
+                .dataVencimento(vencimento)
+                .status(StatusCobranca.PENDENTE)
+                .build();
+    }
+
+    private void stubCobrancasPendentes(List<Cobranca> cobrancas) {
+        when(cobrancaRepository
+                .findTop500ByStatusAndDataVencimentoLessThanEqualOrderByDataVencimentoAsc(
+                        eq(StatusCobranca.PENDENTE), any(LocalDate.class)))
+                .thenReturn(cobrancas);
+    }
+
+    // -------------------------------------------------------------------------
+    // processarAlertasCobranca
+    // -------------------------------------------------------------------------
+
+    @Test
+    void processarAlertasCobranca_criaAlertaParaCobrancaVencendoEmDiaConfigurado() {
+        Cobranca cobranca = cobrancaEm(LocalDate.now().plusDays(7), "principal@empresa.com");
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedCobrancaIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+        stubCobrancasPendentes(List.of(cobranca));
+        when(alertaLogRepository.existsByCobrancaIdAndCreatedAtDate(eq(500L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(false);
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        alertaService.processarAlertasCobranca();
+
+        ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
+        verify(alertaLogRepository, times(1)).save(captor.capture());
+
+        AlertaLog saved = captor.getValue();
+        assertThat(saved.getTipo()).isEqualTo(TipoAlerta.COBRANCA);
+        assertThat(saved.getCanal()).isEqualTo(CanalAlerta.EMAIL);
+        assertThat(saved.getCobrancaId()).isEqualTo(500L);
+        assertThat(saved.getDocumento()).isNull();
+        assertThat(saved.getStatusEnvio()).isEqualTo(StatusEnvio.PENDENTE);
+        assertThat(saved.getDestinatario()).isEqualTo("principal@empresa.com");
+        assertThat(saved.getMensagem()).contains("#500");
+        assertThat(saved.getMensagem()).contains("Cliente Financeiro Ltda");
+    }
+
+    @Test
+    void processarAlertasCobranca_criaAlertaParaCobrancaEmAtraso() {
+        Cobranca cobranca = cobrancaEm(LocalDate.now().minusDays(3), "principal@empresa.com");
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedCobrancaIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+        stubCobrancasPendentes(List.of(cobranca));
+        when(alertaLogRepository.existsByCobrancaIdAndCreatedAtDate(eq(500L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(false);
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        alertaService.processarAlertasCobranca();
+
+        ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
+        verify(alertaLogRepository).save(captor.capture());
+        assertThat(captor.getValue().getMensagem()).contains("em atraso h\u00e1 3 dia(s)");
+    }
+
+    @Test
+    void processarAlertasCobranca_naoGeraAlertaQuandoDiasNaoCorrespondem() {
+        // diasAntecedencia = "30,15,7,1" - 5 dias nao esta na lista e nao ha atraso
+        Cobranca cobranca = cobrancaEm(LocalDate.now().plusDays(5), "principal@empresa.com");
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedCobrancaIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+        stubCobrancasPendentes(List.of(cobranca));
+
+        alertaService.processarAlertasCobranca();
+
+        verify(alertaLogRepository, never()).save(any(AlertaLog.class));
+    }
+
+    @Test
+    void processarAlertasCobranca_ignoraCobrancaComSnoozeAtivo() {
+        Cobranca cobranca = cobrancaEm(LocalDate.now().plusDays(7), "principal@empresa.com");
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedCobrancaIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(List.of(500L));
+        stubCobrancasPendentes(List.of(cobranca));
+
+        alertaService.processarAlertasCobranca();
+
+        verify(alertaLogRepository, never()).save(any(AlertaLog.class));
+    }
+
+    @Test
+    void processarAlertasCobranca_ignoraDuplicataDoMesmoDia() {
+        Cobranca cobranca = cobrancaEm(LocalDate.now().plusDays(1), "principal@empresa.com");
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedCobrancaIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+        stubCobrancasPendentes(List.of(cobranca));
+        when(alertaLogRepository.existsByCobrancaIdAndCreatedAtDate(eq(500L), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(true);
+
+        alertaService.processarAlertasCobranca();
+
+        verify(alertaLogRepository, never()).save(any(AlertaLog.class));
+    }
+
+    @Test
+    void processarAlertasCobranca_ignoraCobrancaSemDataVencimento() {
+        Cobranca cobranca = cobrancaEm(null, "principal@empresa.com");
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedCobrancaIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+        stubCobrancasPendentes(List.of(cobranca));
+
+        alertaService.processarAlertasCobranca();
+
+        verify(alertaLogRepository, never()).save(any(AlertaLog.class));
+    }
+
+    @Test
+    void processarAlertasCobranca_listaVazia_naoSalvaNada() {
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedCobrancaIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+        stubCobrancasPendentes(Collections.emptyList());
+
+        alertaService.processarAlertasCobranca();
+
+        verify(alertaLogRepository, never()).save(any(AlertaLog.class));
+    }
+
+    @Test
+    void processarAlertasCobranca_criaUmAlertaPorCanalAtivo() {
+        defaultConfig.setWhatsappAtivo(true);
+        defaultConfig.setTemplateWhatsapp("WA: {{documento}} vence em {{dias}} dia(s) - {{valor}}");
+
+        Cobranca cobranca = cobrancaEm(LocalDate.now().plusDays(15), "principal@empresa.com");
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedCobrancaIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+        stubCobrancasPendentes(List.of(cobranca));
+        when(alertaLogRepository.existsByCobrancaIdAndCreatedAtDate(any(), any(), any())).thenReturn(false);
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        alertaService.processarAlertasCobranca();
+
+        ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
+        verify(alertaLogRepository, times(2)).save(captor.capture());
+
+        List<AlertaLog> salvos = captor.getAllValues();
+        assertThat(salvos).extracting("canal").containsExactlyInAnyOrder(CanalAlerta.EMAIL, CanalAlerta.WHATSAPP);
+        assertThat(salvos).allSatisfy(a -> assertThat(a.getTipo()).isEqualTo(TipoAlerta.COBRANCA));
+        assertThat(salvos.get(1).getDestinatario()).isEqualTo("5511999999999");
+        assertThat(salvos.get(1).getMensagem()).contains("R$ 1.500,00");
+    }
+
+    @Test
+    void processarAlertasCobranca_clienteSemContatos_destinatarioNulo() {
+        Cliente cliente = Cliente.builder()
+                .id(78L)
+                .razaoSocial("Sem Contatos")
+                .contatos(List.of())
+                .build();
+        Contrato contrato = Contrato.builder()
+                .id(56L)
+                .descricao("Contrato sem contato")
+                .cliente(cliente)
+                .build();
+        Cobranca cobranca = Cobranca.builder()
+                .id(501L)
+                .contrato(contrato)
+                .valorEsperado(new BigDecimal("100.00"))
+                .dataVencimento(LocalDate.now().plusDays(1))
+                .status(StatusCobranca.PENDENTE)
+                .build();
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedCobrancaIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+        stubCobrancasPendentes(List.of(cobranca));
+        when(alertaLogRepository.existsByCobrancaIdAndCreatedAtDate(any(), any(), any())).thenReturn(false);
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        alertaService.processarAlertasCobranca();
+
+        ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
+        verify(alertaLogRepository).save(captor.capture());
+        assertThat(captor.getValue().getDestinatario()).isNull();
+    }
+
+    @Test
+    void processarAlertasCobranca_templateNulo_geraMensagemVazia() {
+        defaultConfig.setTemplateEmail(null);
+        Cobranca cobranca = cobrancaEm(LocalDate.now().plusDays(1), "principal@empresa.com");
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedCobrancaIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+        stubCobrancasPendentes(List.of(cobranca));
+        when(alertaLogRepository.existsByCobrancaIdAndCreatedAtDate(any(), any(), any())).thenReturn(false);
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        alertaService.processarAlertasCobranca();
+
+        ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
+        verify(alertaLogRepository).save(captor.capture());
+        assertThat(captor.getValue().getMensagem()).isEmpty();
+    }
+
+    @Test
+    void processarAlertasCobranca_semContratoOuCliente_naoQuebra() {
+        defaultConfig.setTemplateEmail("{{documento}} | {{cliente}} | {{valor}} | {{vencimento}} | {{dias}}");
+
+        Cobranca cobranca = Cobranca.builder()
+                .id(502L)
+                .contrato(null)
+                .valorEsperado(null)
+                .dataVencimento(LocalDate.now().plusDays(1))
+                .status(StatusCobranca.PENDENTE)
+                .build();
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedCobrancaIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+        stubCobrancasPendentes(List.of(cobranca));
+        when(alertaLogRepository.existsByCobrancaIdAndCreatedAtDate(any(), any(), any())).thenReturn(false);
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        alertaService.processarAlertasCobranca();
+
+        ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
+        verify(alertaLogRepository).save(captor.capture());
+        assertThat(captor.getValue().getDestinatario()).isNull();
+        assertThat(captor.getValue().getMensagem()).contains("R$ 0,00");
+    }
+
+    // -------------------------------------------------------------------------
+    // snoozeAlertaCobranca / enviarManualCobranca
+    // -------------------------------------------------------------------------
+
+    @Test
+    void snoozeAlertaCobranca_criaLogSnoozedComCobrancaId() {
+        Cobranca cobranca = cobrancaEm(LocalDate.now().plusDays(2), "principal@empresa.com");
+
+        when(cobrancaRepository.findById(500L)).thenReturn(Optional.of(cobranca));
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AlertaLogResponse response = alertaService.snoozeAlertaCobranca(500L, 7);
+
+        assertThat(response.getCobrancaId()).isEqualTo(500L);
+        assertThat(response.getTipo()).isEqualTo(TipoAlerta.COBRANCA);
+        assertThat(response.getStatusEnvio()).isEqualTo(StatusEnvio.SNOOZED);
+        assertThat(response.getSnoozedAte()).isEqualTo(LocalDate.now().plusDays(7));
+        assertThat(response.getDocumentoId()).isNull();
+        assertThat(response.getDocumentoNome()).isNull();
+        assertThat(response.getClienteNome()).isEqualTo("Cliente Financeiro Ltda");
+        assertThat(response.getCobrancaDescricao()).contains("Contrato de Licenciamento");
+    }
+
+    @Test
+    void snoozeAlertaCobranca_cobrancaNaoEncontrada_lancaResourceNotFound() {
+        when(cobrancaRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> alertaService.snoozeAlertaCobranca(999L, 7))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(alertaLogRepository, never()).save(any(AlertaLog.class));
+    }
+
+    @Test
+    void enviarManualCobranca_criaLogPendenteComDestinatarioPrincipal() {
+        Cobranca cobranca = cobrancaEm(LocalDate.now().plusDays(2), "principal@empresa.com");
+
+        when(cobrancaRepository.findById(500L)).thenReturn(Optional.of(cobranca));
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AlertaLogResponse response = alertaService.enviarManualCobranca(500L);
+
+        assertThat(response.getTipo()).isEqualTo(TipoAlerta.COBRANCA);
+        assertThat(response.getStatusEnvio()).isEqualTo(StatusEnvio.PENDENTE);
+        assertThat(response.getDestinatario()).isEqualTo("principal@empresa.com");
+        assertThat(response.getCobrancaId()).isEqualTo(500L);
+        assertThat(response.getDocumentoNome()).isNull();
+    }
+
+    @Test
+    void enviarManualCobranca_cobrancaNaoEncontrada_lancaResourceNotFound() {
+        when(cobrancaRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> alertaService.enviarManualCobranca(999L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // -------------------------------------------------------------------------
+    // getAlertasPendentes e getNotificacaoSummary com cobrancas
+    // -------------------------------------------------------------------------
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getAlertasPendentes_incluiCobrancasEOrdenaPorVencimento() {
+        LocalDate today = LocalDate.now();
+
+        Documento documento = Documento.builder()
+                .id(1L)
+                .nome("Documento em 10 dias")
+                .dataValidade(today.plusDays(10))
+                .build();
+
+        Cobranca cobranca = cobrancaEm(today.minusDays(2), "principal@empresa.com");
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedDocumentoIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+        when(alertaLogRepository.findSnoozedCobrancaIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+        when(documentoRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(documento)));
+        stubCobrancasPendentes(List.of(cobranca));
+
+        List<AlertaPendenteResponse> result = alertaService.getAlertasPendentes();
+
+        assertThat(result).hasSize(2);
+        // a cobranca vencida ha 2 dias vem primeiro
+        assertThat(result.get(0).getTipo()).isEqualTo(TipoAlerta.COBRANCA);
+        assertThat(result.get(0).getStatus()).isEqualTo("VENCIDO");
+        assertThat(result.get(0).getClienteNome()).isEqualTo("Cliente Financeiro Ltda");
+        assertThat(result.get(0).getNome()).contains("R$ 1.500,00");
+        assertThat(result.get(1).getTipo()).isEqualTo(TipoAlerta.DOCUMENTO);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getAlertasPendentes_excluiCobrancasComSnoozeAtivo() {
+        Cobranca cobranca = cobrancaEm(LocalDate.now().plusDays(3), "principal@empresa.com");
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedDocumentoIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+        when(alertaLogRepository.findSnoozedCobrancaIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(List.of(500L));
+        when(documentoRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(Collections.emptyList()));
+        stubCobrancasPendentes(List.of(cobranca));
+
+        List<AlertaPendenteResponse> result = alertaService.getAlertasPendentes();
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getAlertasPendentes_cobrancaSemContrato_clienteNomeNulo() {
+        Cobranca cobranca = Cobranca.builder()
+                .id(503L)
+                .contrato(null)
+                .valorEsperado(new BigDecimal("10.00"))
+                .dataVencimento(LocalDate.now().plusDays(4))
+                .status(StatusCobranca.PENDENTE)
+                .build();
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedDocumentoIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+        when(alertaLogRepository.findSnoozedCobrancaIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+        when(documentoRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(Collections.emptyList()));
+        stubCobrancasPendentes(List.of(cobranca));
+
+        List<AlertaPendenteResponse> result = alertaService.getAlertasPendentes();
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getClienteNome()).isNull();
+        assertThat(result.get(0).getStatus()).isEqualTo("A_VENCER");
+    }
+
+    @Test
+    void getNotificacaoSummary_incluiCobrancasVencidas() {
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(documentoRepository.countAVencer(any(LocalDate.class), any(LocalDate.class))).thenReturn(2L);
+        when(documentoRepository.countVencidos(any(LocalDate.class))).thenReturn(1L);
+        when(cobrancaRepository.countByStatusAndDataVencimentoBefore(eq(StatusCobranca.PENDENTE), any(LocalDate.class)))
+                .thenReturn(4L);
+
+        NotificacaoSummaryResponse summary = alertaService.getNotificacaoSummary();
+
+        assertThat(summary.getCobrancasVencidas()).isEqualTo(4L);
+        assertThat(summary.getTotalPendentes()).isEqualTo(7L);
+    }
+
+    // -------------------------------------------------------------------------
+    // toAlertaLogResponse com alertas de cobranca (documento == null)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void getLogs_alertaDeCobranca_naoQuebraComDocumentoNulo() {
+        Cobranca cobranca = cobrancaEm(LocalDate.now().plusDays(1), "principal@empresa.com");
+
+        AlertaLog logCobranca = AlertaLog.builder()
+                .id(900L)
+                .documento(null)
+                .cobrancaId(500L)
+                .tipo(TipoAlerta.COBRANCA)
+                .canal(CanalAlerta.EMAIL)
+                .statusEnvio(StatusEnvio.ENVIADO)
+                .mensagem("Mensagem de cobranca")
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        Pageable pageable = PageRequest.of(0, 10);
+        when(alertaLogRepository.findAll(any(Specification.class), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(logCobranca), pageable, 1));
+        when(cobrancaRepository.findById(500L)).thenReturn(Optional.of(cobranca));
+
+        Page<AlertaLogResponse> result = alertaService.getLogs(pageable, null, TipoAlerta.COBRANCA, null);
+
+        assertThat(result.getContent()).hasSize(1);
+        AlertaLogResponse item = result.getContent().get(0);
+        assertThat(item.getDocumentoId()).isNull();
+        assertThat(item.getDocumentoNome()).isNull();
+        assertThat(item.getCobrancaId()).isEqualTo(500L);
+        assertThat(item.getCobrancaDescricao()).contains("Contrato de Licenciamento");
+        assertThat(item.getClienteNome()).isEqualTo("Cliente Financeiro Ltda");
+    }
+
+    @Test
+    void getLogs_alertaDeCobrancaOrfao_naoQuebraQuandoCobrancaNaoExiste() {
+        AlertaLog logCobranca = AlertaLog.builder()
+                .id(901L)
+                .documento(null)
+                .cobrancaId(404L)
+                .tipo(TipoAlerta.COBRANCA)
+                .canal(CanalAlerta.EMAIL)
+                .statusEnvio(StatusEnvio.ERRO)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        Pageable pageable = PageRequest.of(0, 10);
+        when(alertaLogRepository.findAll(any(Specification.class), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(logCobranca), pageable, 1));
+        when(cobrancaRepository.findById(404L)).thenReturn(Optional.empty());
+
+        Page<AlertaLogResponse> result = alertaService.getLogs(pageable, null, null, null);
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getCobrancaDescricao()).isNull();
+        assertThat(result.getContent().get(0).getClienteNome()).isNull();
+    }
+
+    // -------------------------------------------------------------------------
+    // Cobertura de ramos: configuração, canais e resolução de destinatário
+    // -------------------------------------------------------------------------
+
+    @Test
+    void updateConfig_emailAtivoNulo_preservaValorAtual() {
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(configuracaoAlertaRepository.save(any(ConfiguracaoAlerta.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // emailAtivo ausente na requisição — não deve sobrescrever o valor persistido
+        ConfiguracaoAlertaRequest request = ConfiguracaoAlertaRequest.builder()
+                .whatsappAtivo(true)
+                .build();
+
+        ConfiguracaoAlertaResponse response = alertaService.updateConfig(request);
+
+        assertThat(response.getWhatsappAtivo()).isTrue();
+        assertThat(response.getEmailAtivo()).isTrue();
+        assertThat(defaultConfig.getEmailAtivo()).isTrue();
+    }
+
+    @Test
+    void processarAlertasCobranca_emailDesativado_criaApenasAlertaWhatsapp() {
+        defaultConfig.setEmailAtivo(false);
+        defaultConfig.setWhatsappAtivo(true);
+        defaultConfig.setTemplateWhatsapp("Cobrança {{cobranca}} vence em {{dias}} dia(s)");
+        Cobranca cobranca = cobrancaEm(LocalDate.now().plusDays(7), "principal@empresa.com");
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedCobrancaIds(eq(StatusEnvio.SNOOZED), any(LocalDate.class)))
+                .thenReturn(Collections.emptyList());
+        stubCobrancasPendentes(List.of(cobranca));
+        when(alertaLogRepository.existsByCobrancaIdAndCreatedAtDate(any(), any(), any())).thenReturn(false);
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        alertaService.processarAlertasCobranca();
+
+        ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
+        verify(alertaLogRepository, times(1)).save(captor.capture());
+        assertThat(captor.getValue().getCanal()).isEqualTo(CanalAlerta.WHATSAPP);
+        assertThat(captor.getValue().getDestinatario()).isEqualTo("5511999999999");
+        assertThat(captor.getValue().getMensagem()).contains("vence em 7 dia(s)");
+    }
+
+    @Test
+    void enviarManualCobranca_semDataVencimento_vencimentoVazioEDiasZero() {
+        defaultConfig.setTemplateEmail("{{cobranca}}|{{vencimento}}|{{dias}}");
+        Cobranca cobranca = cobrancaEm(null, "principal@empresa.com");
+
+        when(cobrancaRepository.findById(500L)).thenReturn(Optional.of(cobranca));
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AlertaLogResponse response = alertaService.enviarManualCobranca(500L);
+
+        assertThat(response.getMensagem()).isEqualTo("Cobrança #500 - Contrato de Licenciamento||0");
+        assertThat(response.getStatusEnvio()).isEqualTo(StatusEnvio.PENDENTE);
+    }
+
+    @Test
+    void enviarManualCobranca_contratoSemDescricao_descricaoApenasComNumero() {
+        Cliente cliente = Cliente.builder()
+                .id(80L)
+                .razaoSocial("Cliente Sem Descricao")
+                .contatos(List.of())
+                .build();
+        Contrato contrato = Contrato.builder()
+                .id(60L)
+                .descricao(null)
+                .cliente(cliente)
+                .build();
+        Cobranca cobranca = Cobranca.builder()
+                .id(510L)
+                .contrato(contrato)
+                .valorEsperado(new BigDecimal("250.00"))
+                .dataVencimento(LocalDate.now().plusDays(3))
+                .status(StatusCobranca.PENDENTE)
+                .build();
+
+        when(cobrancaRepository.findById(510L)).thenReturn(Optional.of(cobranca));
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AlertaLogResponse response = alertaService.enviarManualCobranca(510L);
+
+        assertThat(response.getCobrancaDescricao()).isEqualTo("Cobrança #510");
+        assertThat(response.getClienteNome()).isEqualTo("Cliente Sem Descricao");
+    }
+
+    @Test
+    void enviarManualCobranca_clienteSemRazaoSocial_clienteVazioNaMensagem() {
+        defaultConfig.setTemplateEmail("[{{cliente}}]");
+        Cliente cliente = Cliente.builder()
+                .id(81L)
+                .razaoSocial(null)
+                .contatos(List.of())
+                .build();
+        Contrato contrato = Contrato.builder()
+                .id(61L)
+                .descricao("Contrato sem razão social")
+                .cliente(cliente)
+                .build();
+        Cobranca cobranca = Cobranca.builder()
+                .id(511L)
+                .contrato(contrato)
+                .valorEsperado(new BigDecimal("10.00"))
+                .dataVencimento(LocalDate.now().plusDays(1))
+                .status(StatusCobranca.PENDENTE)
+                .build();
+
+        when(cobrancaRepository.findById(511L)).thenReturn(Optional.of(cobranca));
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AlertaLogResponse response = alertaService.enviarManualCobranca(511L);
+
+        assertThat(response.getMensagem()).isEqualTo("[]");
+        assertThat(response.getClienteNome()).isNull();
+    }
+
+    @Test
+    void enviarManualCobranca_clienteComContatosNulos_destinatarioNulo() {
+        Cliente cliente = Cliente.builder()
+                .id(82L)
+                .razaoSocial("Cliente Sem Lista")
+                .contatos(null)
+                .build();
+        Contrato contrato = Contrato.builder()
+                .id(62L)
+                .descricao("Contrato sem contatos")
+                .cliente(cliente)
+                .build();
+        Cobranca cobranca = Cobranca.builder()
+                .id(513L)
+                .contrato(contrato)
+                .valorEsperado(new BigDecimal("77.00"))
+                .dataVencimento(LocalDate.now().plusDays(1))
+                .status(StatusCobranca.PENDENTE)
+                .build();
+
+        when(cobrancaRepository.findById(513L)).thenReturn(Optional.of(cobranca));
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AlertaLogResponse response = alertaService.enviarManualCobranca(513L);
+
+        assertThat(response.getDestinatario()).isNull();
+        assertThat(response.getClienteNome()).isEqualTo("Cliente Sem Lista");
+    }
+
+    @Test
+    void enviarManualCobranca_contatosComEmailNuloOuEmBranco_usaPrimeiroValido() {
+        Contato semEmail = new Contato();
+        semEmail.setEmail(null);
+        semEmail.setPrincipal(false);
+
+        Contato emBranco = new Contato();
+        emBranco.setEmail("   ");
+        emBranco.setPrincipal(false);
+
+        Contato valido = new Contato();
+        valido.setEmail("valido@empresa.com");
+        valido.setPrincipal(false);
+
+        Cliente cliente = Cliente.builder()
+                .id(83L)
+                .razaoSocial("Cliente Contatos Mistos")
+                .contatos(List.of(semEmail, emBranco, valido))
+                .build();
+        Contrato contrato = Contrato.builder()
+                .id(63L)
+                .descricao("Contrato contatos mistos")
+                .cliente(cliente)
+                .build();
+        Cobranca cobranca = Cobranca.builder()
+                .id(514L)
+                .contrato(contrato)
+                .valorEsperado(new BigDecimal("30.00"))
+                .dataVencimento(LocalDate.now().plusDays(1))
+                .status(StatusCobranca.PENDENTE)
+                .build();
+
+        when(cobrancaRepository.findById(514L)).thenReturn(Optional.of(cobranca));
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AlertaLogResponse response = alertaService.enviarManualCobranca(514L);
+
+        assertThat(response.getDestinatario()).isEqualTo("valido@empresa.com");
+    }
+
+    @Test
+    void enviarManualCobranca_cobrancaSemContrato_clienteNomeNulo() {
+        Cobranca cobranca = Cobranca.builder()
+                .id(512L)
+                .contrato(null)
+                .valorEsperado(new BigDecimal("99.00"))
+                .dataVencimento(LocalDate.now().plusDays(5))
+                .status(StatusCobranca.PENDENTE)
+                .build();
+
+        when(cobrancaRepository.findById(512L)).thenReturn(Optional.of(cobranca));
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AlertaLogResponse response = alertaService.enviarManualCobranca(512L);
+
+        assertThat(response.getCobrancaDescricao()).isEqualTo("Cobrança #512");
+        assertThat(response.getClienteNome()).isNull();
+        assertThat(response.getDestinatario()).isNull();
+    }
+
+    @Test
+    void getAlertasPendentes_cobrancaSemDataVencimento_diasZeroEStatusAVencer() {
+        Cobranca cobranca = cobrancaEm(null, "principal@empresa.com");
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedDocumentoIds(any(), any())).thenReturn(List.of());
+        when(alertaLogRepository.findSnoozedCobrancaIds(any(), any())).thenReturn(List.of());
+        when(documentoRepository.findAll(any(Specification.class), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        stubCobrancasPendentes(List.of(cobranca));
+
+        List<AlertaPendenteResponse> result = alertaService.getAlertasPendentes();
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getDataVencimento()).isNull();
+        assertThat(result.get(0).getDiasRestantes()).isZero();
+        assertThat(result.get(0).getStatus()).isEqualTo("A_VENCER");
+        assertThat(result.get(0).getTipo()).isEqualTo(TipoAlerta.COBRANCA);
+    }
+
+    @Test
+    void enviarManual_clienteComContatosNulos_destinatarioNulo() {
+        Cliente cliente = Cliente.builder()
+                .id(90L)
+                .razaoSocial("Cliente Doc Sem Lista")
+                .contatos(null)
+                .build();
+        Documento documento = Documento.builder()
+                .id(21L)
+                .nome("Alvará")
+                .dataValidade(LocalDate.now().plusDays(5))
+                .cliente(cliente)
+                .build();
+
+        when(documentoRepository.findById(21L)).thenReturn(Optional.of(documento));
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AlertaLogResponse response = alertaService.enviarManual(21L);
+
+        assertThat(response.getDestinatario()).isNull();
+        assertThat(response.getClienteNome()).isEqualTo("Cliente Doc Sem Lista");
+    }
+
+    @Test
+    void enviarManual_contatoComEmailEmBranco_usaProximoContatoComEmail() {
+        Contato emBranco = new Contato();
+        emBranco.setEmail("   ");
+
+        Contato valido = new Contato();
+        valido.setEmail("doc@empresa.com");
+
+        Cliente cliente = Cliente.builder()
+                .id(91L)
+                .razaoSocial("Cliente Doc")
+                .contatos(List.of(emBranco, valido))
+                .build();
+        Documento documento = Documento.builder()
+                .id(22L)
+                .nome("Certidão")
+                .dataValidade(LocalDate.now().plusDays(5))
+                .cliente(cliente)
+                .build();
+
+        when(documentoRepository.findById(22L)).thenReturn(Optional.of(documento));
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AlertaLogResponse response = alertaService.enviarManual(22L);
+
+        assertThat(response.getDestinatario()).isEqualTo("doc@empresa.com");
+    }
+
+    @Test
+    void processarAlertasDiarios_whatsappDocumentoSemCliente_destinatarioNulo() {
+        defaultConfig.setEmailAtivo(false);
+        defaultConfig.setWhatsappAtivo(true);
+        defaultConfig.setTemplateWhatsapp("Doc {{documento}} vence em {{dias}}");
+
+        Documento documento = Documento.builder()
+                .id(23L)
+                .nome("Doc sem cliente")
+                .dataValidade(LocalDate.now().plusDays(7))
+                .cliente(null)
+                .build();
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedDocumentoIds(any(), any())).thenReturn(List.of());
+        when(documentoRepository.findAll(any(Specification.class), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of(documento)));
+        when(alertaLogRepository.existsByDocumentoIdAndCreatedAtDate(any(), any(), any())).thenReturn(false);
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        alertaService.processarAlertasDiarios();
+
+        ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
+        verify(alertaLogRepository, times(1)).save(captor.capture());
+        assertThat(captor.getValue().getCanal()).isEqualTo(CanalAlerta.WHATSAPP);
+        assertThat(captor.getValue().getDestinatario()).isNull();
+        assertThat(captor.getValue().getMensagem()).isEqualTo("Doc Doc sem cliente vence em 7");
+    }
+
+    @Test
+    void processarAlertasDiarios_whatsappClienteComContatosNulos_destinatarioNulo() {
+        defaultConfig.setEmailAtivo(false);
+        defaultConfig.setWhatsappAtivo(true);
+        defaultConfig.setTemplateWhatsapp("Doc {{documento}}");
+
+        Cliente cliente = Cliente.builder()
+                .id(92L)
+                .razaoSocial("Cliente Wpp Sem Lista")
+                .contatos(null)
+                .build();
+        Documento documento = Documento.builder()
+                .id(24L)
+                .nome("Contrato social")
+                .dataValidade(LocalDate.now().plusDays(7))
+                .cliente(cliente)
+                .build();
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedDocumentoIds(any(), any())).thenReturn(List.of());
+        when(documentoRepository.findAll(any(Specification.class), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of(documento)));
+        when(alertaLogRepository.existsByDocumentoIdAndCreatedAtDate(any(), any(), any())).thenReturn(false);
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        alertaService.processarAlertasDiarios();
+
+        ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
+        verify(alertaLogRepository, times(1)).save(captor.capture());
+        assertThat(captor.getValue().getDestinatario()).isNull();
+        assertThat(captor.getValue().getMensagem()).isEqualTo("Doc Contrato social");
+    }
+
+    @Test
+    void processarAlertasDiarios_whatsappContatosSemNumeroOuEmBranco_usaPrimeiroValido() {
+        defaultConfig.setEmailAtivo(false);
+        defaultConfig.setWhatsappAtivo(true);
+        defaultConfig.setTemplateWhatsapp("Doc {{documento}}");
+
+        Contato semNumero = new Contato();
+        semNumero.setWhatsapp(null);
+
+        Contato emBranco = new Contato();
+        emBranco.setWhatsapp("   ");
+
+        Contato valido = new Contato();
+        valido.setWhatsapp("5511888888888");
+
+        Cliente cliente = Cliente.builder()
+                .id(93L)
+                .razaoSocial("Cliente Wpp Misto")
+                .contatos(List.of(semNumero, emBranco, valido))
+                .build();
+        Documento documento = Documento.builder()
+                .id(25L)
+                .nome("Licença ambiental")
+                .dataValidade(LocalDate.now().plusDays(7))
+                .cliente(cliente)
+                .build();
+
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(alertaLogRepository.findSnoozedDocumentoIds(any(), any())).thenReturn(List.of());
+        when(documentoRepository.findAll(any(Specification.class), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of(documento)));
+        when(alertaLogRepository.existsByDocumentoIdAndCreatedAtDate(any(), any(), any())).thenReturn(false);
+        when(alertaLogRepository.save(any(AlertaLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        alertaService.processarAlertasDiarios();
+
+        ArgumentCaptor<AlertaLog> captor = ArgumentCaptor.forClass(AlertaLog.class);
+        verify(alertaLogRepository, times(1)).save(captor.capture());
+        assertThat(captor.getValue().getDestinatario()).isEqualTo("5511888888888");
     }
 }

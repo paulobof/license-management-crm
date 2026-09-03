@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, TrendingDown, AlertCircle, Clock } from 'lucide-react';
-import type { Cobranca, FinanceiroSummary, Page, StatusCobranca } from '../../types';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { TrendingUp, TrendingDown, AlertCircle, Clock, Paperclip } from 'lucide-react';
+import type { FinanceiroSummary, Page, StatusCobranca } from '../../types';
 import * as cobrancasApi from '../../api/cobrancas';
+import type { CobrancaComComprovante } from '../../api/cobrancas';
 import Table from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
+import ExportButton from '../../components/ui/ExportButton';
 import SummaryCard from '../../components/ui/SummaryCard';
 import { formatDate } from '../../utils/formatDate';
 
@@ -40,7 +42,7 @@ const FinanceiroPage: React.FC = () => {
   const now = new Date();
   const [summary, setSummary] = useState<FinanceiroSummary | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(true);
-  const [data, setData] = useState<Page<Cobranca> | null>(null);
+  const [data, setData] = useState<Page<CobrancaComComprovante> | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState(String(now.getMonth() + 1));
@@ -83,6 +85,15 @@ const FinanceiroPage: React.FC = () => {
 
   const totalPages = data?.totalPages ?? 0;
 
+  // Filtros ativos da tela, reaproveitados pela exportacao em planilha
+  const filtrosAtivos = useMemo(() => {
+    const filtros: Record<string, unknown> = {};
+    if (statusFilter) filtros.status = statusFilter;
+    if (monthFilter) filtros.month = Number(monthFilter);
+    if (yearFilter) filtros.year = Number(yearFilter);
+    return filtros;
+  }, [statusFilter, monthFilter, yearFilter]);
+
   const displaySummary = (val: number | undefined): string => {
     if (loadingSummary) return '...';
     if (val === undefined) return 'R$ 0,00';
@@ -93,38 +104,57 @@ const FinanceiroPage: React.FC = () => {
     {
       key: 'dataVencimento',
       header: 'Vencimento',
-      render: (row: Cobranca) => <span>{formatDate(row.dataVencimento)}</span>,
+      render: (row: CobrancaComComprovante) => <span>{formatDate(row.dataVencimento)}</span>,
     },
     {
       key: 'contratoId',
       header: 'Contrato',
-      render: (row: Cobranca) => (
+      render: (row: CobrancaComComprovante) => (
         <span className="text-gray-700">#{row.contratoId}</span>
       ),
     },
     {
       key: 'valorEsperado',
       header: 'Valor Esperado',
-      render: (row: Cobranca) => (
+      render: (row: CobrancaComComprovante) => (
         <span className="font-mono text-gray-800">{formatBRL(row.valorEsperado)}</span>
       ),
     },
     {
       key: 'valorRecebido',
       header: 'Valor Recebido',
-      render: (row: Cobranca) => (
+      render: (row: CobrancaComComprovante) => (
         <span className="font-mono text-gray-800">{formatBRL(row.valorRecebido)}</span>
       ),
     },
     {
       key: 'dataPagamento',
       header: 'Data Pagamento',
-      render: (row: Cobranca) => <span>{formatDate(row.dataPagamento)}</span>,
+      render: (row: CobrancaComComprovante) => <span>{formatDate(row.dataPagamento)}</span>,
+    },
+    {
+      key: 'comprovante',
+      header: 'Comprovante',
+      render: (row: CobrancaComComprovante) =>
+        row.comprovanteUrl ? (
+          <a
+            href={row.comprovanteUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sm text-red-600 hover:text-red-700 hover:underline"
+            title="Abrir comprovante no Google Drive"
+          >
+            <Paperclip size={14} />
+            Ver
+          </a>
+        ) : (
+          <span className="text-gray-400">—</span>
+        ),
     },
     {
       key: 'statusCalculado',
       header: 'Status',
-      render: (row: Cobranca) => {
+      render: (row: CobrancaComComprovante) => {
         const config =
           statusCobrancaConfig[row.statusCalculado] ?? statusCobrancaConfig.CANCELADO;
         return (
@@ -185,7 +215,14 @@ const FinanceiroPage: React.FC = () => {
 
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
         <div className="px-5 py-4 border-b border-gray-200">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Cobrancas</h2>
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+            <h2 className="text-sm font-semibold text-gray-700">Cobrancas</h2>
+            <ExportButton
+              endpoint="/api/v1/export/cobrancas"
+              params={filtrosAtivos}
+              filename="cobrancas.csv"
+            />
+          </div>
           <div className="flex gap-3 flex-wrap">
             <select
               value={statusFilter}

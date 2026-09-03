@@ -10,8 +10,8 @@ import { formatDate } from '../../utils/formatDate';
 
 const AlertaCard: React.FC<{
   alerta: AlertaPendente;
-  onSnooze: (id: number) => void;
-  onEnviar: (id: number) => void;
+  onSnooze: (alerta: AlertaPendente) => void;
+  onEnviar: (alerta: AlertaPendente) => void;
   loadingSnooze: boolean;
   loadingEnviar: boolean;
 }> = ({ alerta, onSnooze, onEnviar, loadingSnooze, loadingEnviar }) => {
@@ -64,7 +64,7 @@ const AlertaCard: React.FC<{
           variant="secondary"
           size="sm"
           loading={loadingSnooze}
-          onClick={() => onSnooze(alerta.id)}
+          onClick={() => onSnooze(alerta)}
           title="Adiar 7 dias"
         >
           <BellOff size={14} />
@@ -74,7 +74,7 @@ const AlertaCard: React.FC<{
           variant="primary"
           size="sm"
           loading={loadingEnviar}
-          onClick={() => onEnviar(alerta.id)}
+          onClick={() => onEnviar(alerta)}
           title="Enviar alerta"
         >
           <Send size={14} />
@@ -89,8 +89,11 @@ const AlertaList: React.FC = () => {
   const { isAdmin } = useAuth();
   const [alertas, setAlertas] = useState<AlertaPendente[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingSnooze, setLoadingSnooze] = useState<Record<number, boolean>>({});
-  const [loadingEnviar, setLoadingEnviar] = useState<Record<number, boolean>>({});
+  const [loadingSnooze, setLoadingSnooze] = useState<Record<string, boolean>>({});
+  const [loadingEnviar, setLoadingEnviar] = useState<Record<string, boolean>>({});
+
+  // Documentos e cobrancas usam sequencias de id distintas; a chave combina tipo + id
+  const alertaKey = (alerta: AlertaPendente): string => `${alerta.tipo}-${alerta.id}`;
 
   const fetchAlertas = useCallback(async () => {
     setLoading(true);
@@ -108,27 +111,29 @@ const AlertaList: React.FC = () => {
     fetchAlertas();
   }, [fetchAlertas]);
 
-  const handleSnooze = async (id: number) => {
-    setLoadingSnooze((prev) => ({ ...prev, [id]: true }));
+  const handleSnooze = async (alerta: AlertaPendente) => {
+    const key = alertaKey(alerta);
+    setLoadingSnooze((prev) => ({ ...prev, [key]: true }));
     try {
-      await alertasApi.snooze(id, 7);
+      await alertasApi.snooze(alerta.id, 7, alerta.tipo);
       await fetchAlertas();
     } catch {
       // silently ignore
     } finally {
-      setLoadingSnooze((prev) => ({ ...prev, [id]: false }));
+      setLoadingSnooze((prev) => ({ ...prev, [key]: false }));
     }
   };
 
-  const handleEnviar = async (id: number) => {
-    setLoadingEnviar((prev) => ({ ...prev, [id]: true }));
+  const handleEnviar = async (alerta: AlertaPendente) => {
+    const key = alertaKey(alerta);
+    setLoadingEnviar((prev) => ({ ...prev, [key]: true }));
     try {
-      await alertasApi.enviarManual(id);
+      await alertasApi.enviarManual(alerta.id, alerta.tipo);
       await fetchAlertas();
     } catch {
       // silently ignore
     } finally {
-      setLoadingEnviar((prev) => ({ ...prev, [id]: false }));
+      setLoadingEnviar((prev) => ({ ...prev, [key]: false }));
     }
   };
 
@@ -175,12 +180,12 @@ const AlertaList: React.FC = () => {
         <div className="space-y-3">
           {alertas.map((alerta) => (
             <AlertaCard
-              key={alerta.id}
+              key={alertaKey(alerta)}
               alerta={alerta}
               onSnooze={handleSnooze}
               onEnviar={handleEnviar}
-              loadingSnooze={!!loadingSnooze[alerta.id]}
-              loadingEnviar={!!loadingEnviar[alerta.id]}
+              loadingSnooze={!!loadingSnooze[alertaKey(alerta)]}
+              loadingEnviar={!!loadingEnviar[alertaKey(alerta)]}
             />
           ))}
         </div>

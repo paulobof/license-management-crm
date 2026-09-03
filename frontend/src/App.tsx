@@ -4,6 +4,8 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 
 const Login = lazy(() => import('./pages/Login'));
+const ForgotPassword = lazy(() => import('./pages/auth/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/auth/ResetPassword'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const ClienteList = lazy(() => import('./pages/clientes/ClienteList'));
 const ClienteForm = lazy(() => import('./pages/clientes/ClienteForm'));
@@ -29,6 +31,8 @@ const App: React.FC = () => {
     <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/esqueci-senha" element={<ForgotPassword />} />
+        <Route path="/redefinir-senha" element={<ResetPassword />} />
         <Route
           element={
             <ProtectedRoute>

@@ -24,8 +24,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.lang.reflect.Method;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -289,5 +291,101 @@ class AlertaControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.documentoId").value(10));
+    }
+
+    // -------------------------------------------------------------------------
+    // Snooze / enviar-manual de cobranca (tipo=COBRANCA)
+    // -------------------------------------------------------------------------
+
+    private AlertaLogResponse buildAlertaCobrancaResponse(Long id) {
+        return AlertaLogResponse.builder()
+                .id(id)
+                .cobrancaId(500L)
+                .cobrancaDescricao("Cobranca #500 - Contrato de Licenciamento")
+                .clienteNome("Cliente Financeiro Ltda")
+                .tipo(TipoAlerta.COBRANCA)
+                .canal(CanalAlerta.EMAIL)
+                .destinatario("financeiro@empresa.com")
+                .statusEnvio(StatusEnvio.PENDENTE)
+                .createdAt(LocalDateTime.now())
+                .build();
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/alertas/{id}/snooze?tipo=COBRANCA — adia alerta de cobranca")
+    void snooze_tipoCobranca_delegaParaSnoozeAlertaCobranca() throws Exception {
+        AlertaLogResponse response = buildAlertaCobrancaResponse(2L);
+        response.setStatusEnvio(StatusEnvio.SNOOZED);
+        response.setSnoozedAte(LocalDate.now().plusDays(7));
+
+        when(alertaService.snoozeAlertaCobranca(500L, 7)).thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/alertas/500/snooze").param("tipo", "COBRANCA"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cobrancaId").value(500))
+                .andExpect(jsonPath("$.documentoId").doesNotExist())
+                .andExpect(jsonPath("$.tipo").value("COBRANCA"));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/alertas/{id}/snooze?tipo=DOCUMENTO — mantem o comportamento padrao")
+    void snooze_tipoDocumentoExplicito_delegaParaSnoozeAlerta() throws Exception {
+        AlertaLogResponse response = buildAlertaLogResponse(1L);
+        when(alertaService.snoozeAlerta(10L, 7)).thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/alertas/10/snooze").param("tipo", "DOCUMENTO"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentoId").value(10));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/alertas/enviar-manual/{id}?tipo=COBRANCA — dispara alerta de cobranca")
+    void enviarManual_tipoCobranca_delegaParaEnviarManualCobranca() throws Exception {
+        AlertaLogResponse response = buildAlertaCobrancaResponse(3L);
+        when(alertaService.enviarManualCobranca(500L)).thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/alertas/enviar-manual/500").param("tipo", "COBRANCA"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cobrancaId").value(500))
+                .andExpect(jsonPath("$.cobrancaDescricao").value("Cobranca #500 - Contrato de Licenciamento"));
+    }
+
+    // -------------------------------------------------------------------------
+    // Politica de papeis (item 3 do plano)
+    // -------------------------------------------------------------------------
+
+    private String preAuthorizeDe(String metodo) {
+        for (Method m : AlertaController.class.getDeclaredMethods()) {
+            if (m.getName().equals(metodo)) {
+                PreAuthorize annotation = m.getAnnotation(PreAuthorize.class);
+                return annotation != null ? annotation.value() : null;
+            }
+        }
+        throw new IllegalArgumentException("Metodo nao encontrado: " + metodo);
+    }
+
+    @Test
+    @DisplayName("politica de papeis — snooze e enviar-manual liberados para ADMIN e USUARIO")
+    void politicaDePapeis_snoozeEEnviarManual() {
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("snooze"))
+                .isEqualTo("hasAnyRole('ADMIN','USUARIO')");
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("enviarManual"))
+                .isEqualTo("hasAnyRole('ADMIN','USUARIO')");
+    }
+
+    @Test
+    @DisplayName("politica de papeis — configuracao de alertas permanece restrita a ADMIN")
+    void politicaDePapeis_configApenasAdmin() {
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("updateConfig"))
+                .isEqualTo("hasRole('ADMIN')");
+    }
+
+    @Test
+    @DisplayName("politica de papeis — leituras de alertas nao exigem @PreAuthorize")
+    void politicaDePapeis_leiturasSemPreAuthorize() {
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("getConfig")).isNull();
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("getPendentes")).isNull();
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("getSummary")).isNull();
+        org.assertj.core.api.Assertions.assertThat(preAuthorizeDe("getHistorico")).isNull();
     }
 }

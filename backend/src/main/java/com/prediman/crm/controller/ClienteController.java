@@ -44,14 +44,14 @@ public class ClienteController {
     }
 
     @PostMapping("/clientes")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
     public ResponseEntity<ClienteResponse> create(@Valid @RequestBody ClienteRequest request) {
         ClienteResponse response = clienteService.create(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PutMapping("/clientes/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
     public ResponseEntity<ClienteResponse> update(@PathVariable Long id,
                                                    @Valid @RequestBody ClienteRequest request) {
         return ResponseEntity.ok(clienteService.update(id, request));
@@ -65,7 +65,7 @@ public class ClienteController {
     }
 
     @PatchMapping("/clientes/{id}/toggle-status")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','USUARIO')")
     public ResponseEntity<ClienteResponse> toggleStatus(@PathVariable Long id) {
         return ResponseEntity.ok(clienteService.toggleStatus(id));
     }

@@ -492,4 +492,148 @@ class ContratoServiceTest {
     void specificationLambda_comTodosFiltros_executa() {
         invokeSpec(captureSpec("teste", 1L, StatusContrato.ATIVO, Periodicidade.ANUAL));
     }
+
+    // ------------------------------------------------ gerarCobrancaMensalAutomatica (job mensal)
+
+    @Test
+    void gerarCobrancaMensalAutomatica_geraParcelaComVencimentoNoDiaDoContrato() {
+        LocalDate referencia = LocalDate.of(2024, 3, 1);
+
+        when(contratoRepository.findById(20L)).thenReturn(Optional.of(contrato));
+        when(cobrancaRepository.existsByContratoIdAndDataVencimentoBetween(
+                20L, LocalDate.of(2024, 3, 1), LocalDate.of(2024, 3, 31))).thenReturn(false);
+        when(cobrancaRepository.save(any(Cobranca.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        boolean gerada = contratoService.gerarCobrancaMensalAutomatica(20L, referencia);
+
+        assertThat(gerada).isTrue();
+
+        ArgumentCaptor<Cobranca> captor = ArgumentCaptor.forClass(Cobranca.class);
+        verify(cobrancaRepository).save(captor.capture());
+        Cobranca cobranca = captor.getValue();
+        assertThat(cobranca.getDataVencimento()).isEqualTo(LocalDate.of(2024, 3, 10));
+        assertThat(cobranca.getValorEsperado()).isEqualByComparingTo("1500.00");
+        assertThat(cobranca.getStatus()).isEqualTo(StatusCobranca.PENDENTE);
+        assertThat(cobranca.getContrato()).isEqualTo(contrato);
+    }
+
+    @Test
+    void gerarCobrancaMensalAutomatica_cobrancaJaExiste_retornaFalseSemLancarExcecao() {
+        LocalDate referencia = LocalDate.of(2024, 3, 15);
+
+        when(contratoRepository.findById(20L)).thenReturn(Optional.of(contrato));
+        when(cobrancaRepository.existsByContratoIdAndDataVencimentoBetween(
+                20L, LocalDate.of(2024, 3, 1), LocalDate.of(2024, 3, 31))).thenReturn(true);
+
+        boolean gerada = contratoService.gerarCobrancaMensalAutomatica(20L, referencia);
+
+        assertThat(gerada).isFalse();
+        verify(cobrancaRepository, never()).save(any());
+    }
+
+    @Test
+    void gerarCobrancaMensalAutomatica_contratoNaoMensal_retornaFalse() {
+        contrato.setPeriodicidade(Periodicidade.ANUAL);
+        when(contratoRepository.findById(20L)).thenReturn(Optional.of(contrato));
+
+        boolean gerada = contratoService.gerarCobrancaMensalAutomatica(20L, LocalDate.of(2024, 3, 1));
+
+        assertThat(gerada).isFalse();
+        verify(cobrancaRepository, never()).save(any());
+        verify(cobrancaRepository, never()).existsByContratoIdAndDataVencimentoBetween(any(), any(), any());
+    }
+
+    @Test
+    void gerarCobrancaMensalAutomatica_contratoInativo_retornaFalse() {
+        contrato.setStatus(StatusContrato.ENCERRADO);
+        when(contratoRepository.findById(20L)).thenReturn(Optional.of(contrato));
+
+        boolean gerada = contratoService.gerarCobrancaMensalAutomatica(20L, LocalDate.of(2024, 3, 1));
+
+        assertThat(gerada).isFalse();
+        verify(cobrancaRepository, never()).save(any());
+    }
+
+    @Test
+    void gerarCobrancaMensalAutomatica_contratoEncerradoAntesDoMes_retornaFalse() {
+        contrato.setDataFim(LocalDate.of(2024, 1, 31));
+        when(contratoRepository.findById(20L)).thenReturn(Optional.of(contrato));
+
+        boolean gerada = contratoService.gerarCobrancaMensalAutomatica(20L, LocalDate.of(2024, 3, 1));
+
+        assertThat(gerada).isFalse();
+        verify(cobrancaRepository, never()).save(any());
+    }
+
+    @Test
+    void gerarCobrancaMensalAutomatica_contratoIniciandoDepoisDoMes_retornaFalse() {
+        contrato.setDataInicio(LocalDate.of(2024, 5, 1));
+        when(contratoRepository.findById(20L)).thenReturn(Optional.of(contrato));
+
+        boolean gerada = contratoService.gerarCobrancaMensalAutomatica(20L, LocalDate.of(2024, 3, 1));
+
+        assertThat(gerada).isFalse();
+        verify(cobrancaRepository, never()).save(any());
+    }
+
+    @Test
+    void gerarCobrancaMensalAutomatica_contratoTerminandoNoMes_geraParcela() {
+        contrato.setDataFim(LocalDate.of(2024, 3, 20));
+
+        when(contratoRepository.findById(20L)).thenReturn(Optional.of(contrato));
+        when(cobrancaRepository.existsByContratoIdAndDataVencimentoBetween(any(), any(), any()))
+                .thenReturn(false);
+        when(cobrancaRepository.save(any(Cobranca.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        boolean gerada = contratoService.gerarCobrancaMensalAutomatica(20L, LocalDate.of(2024, 3, 1));
+
+        assertThat(gerada).isTrue();
+    }
+
+    @Test
+    void gerarCobrancaMensalAutomatica_diaDoContratoInexistenteNoMes_usaUltimoDiaDoMes() {
+        contrato.setDataInicio(LocalDate.of(2024, 1, 31));
+
+        when(contratoRepository.findById(20L)).thenReturn(Optional.of(contrato));
+        when(cobrancaRepository.existsByContratoIdAndDataVencimentoBetween(any(), any(), any()))
+                .thenReturn(false);
+        when(cobrancaRepository.save(any(Cobranca.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        boolean gerada = contratoService.gerarCobrancaMensalAutomatica(20L, LocalDate.of(2024, 2, 5));
+
+        assertThat(gerada).isTrue();
+
+        ArgumentCaptor<Cobranca> captor = ArgumentCaptor.forClass(Cobranca.class);
+        verify(cobrancaRepository).save(captor.capture());
+        assertThat(captor.getValue().getDataVencimento()).isEqualTo(LocalDate.of(2024, 2, 29));
+    }
+
+    @Test
+    void gerarCobrancaMensalAutomatica_contratoInexistente_lancaResourceNotFoundException() {
+        when(contratoRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> contratoService.gerarCobrancaMensalAutomatica(999L, LocalDate.of(2024, 3, 1)))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void gerarCobrancaMensalAutomatica_contratoSemDataInicio_usaDiaDaReferencia() {
+        contrato.setDataInicio(null);
+        contrato.setDataFim(null);
+        LocalDate referencia = LocalDate.of(2024, 4, 18);
+
+        when(contratoRepository.findById(20L)).thenReturn(Optional.of(contrato));
+        when(cobrancaRepository.existsByContratoIdAndDataVencimentoBetween(
+                20L, LocalDate.of(2024, 4, 1), LocalDate.of(2024, 4, 30))).thenReturn(false);
+        when(cobrancaRepository.save(any(Cobranca.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        boolean gerada = contratoService.gerarCobrancaMensalAutomatica(20L, referencia);
+
+        assertThat(gerada).isTrue();
+
+        ArgumentCaptor<Cobranca> captor = ArgumentCaptor.forClass(Cobranca.class);
+        verify(cobrancaRepository).save(captor.capture());
+        // Sem dataInicio o vencimento cai no mesmo dia da referência
+        assertThat(captor.getValue().getDataVencimento()).isEqualTo(LocalDate.of(2024, 4, 18));
+    }
 }

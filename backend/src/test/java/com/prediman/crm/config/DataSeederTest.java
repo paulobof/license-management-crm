@@ -116,4 +116,16 @@ class DataSeederTest {
         assertThat(adminInativo.getPerfil()).isEqualTo(Perfil.ADMIN);
         assertThat(adminInativo.getSenhaHash()).isEqualTo("$2a$10$newHash");
     }
+
+    @Test
+    @DisplayName("run nao cria admin quando senha inicial e nula")
+    void run_naoFazNadaQuandoSenhaNula() throws Exception {
+        when(usuarioRepository.countByPerfilAndAtivoTrue(Perfil.ADMIN)).thenReturn(0L);
+        ReflectionTestUtils.setField(dataSeeder, "adminInitialPassword", null);
+
+        dataSeeder.run();
+
+        verify(usuarioRepository, never()).save(any());
+        verify(usuarioRepository, never()).findByEmail(anyString());
+    }
 }

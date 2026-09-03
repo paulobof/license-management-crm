@@ -110,6 +110,11 @@ public class ContratoService {
         log.info("Contrato excluido com id: {}", id);
     }
 
+    /**
+     * Gera manualmente a cobrança do mês corrente para um contrato mensal ativo.
+     * Mantém o contrato de erro original: lança BusinessException quando o contrato
+     * não é mensal, não está ativo ou já possui cobrança no mês.
+     */
     @Transactional
     public ContratoResponse gerarCobrancasMensais(Long contratoId) {
         Contrato contrato = findContratoById(contratoId);
@@ -123,18 +128,75 @@ public class ContratoService {
         }
 
         LocalDate today = LocalDate.now();
-        LocalDate mesInicio = today.withDayOfMonth(1);
-        LocalDate mesFim = today.withDayOfMonth(today.lengthOfMonth());
 
-        boolean jaExiste = cobrancaRepository.existsByContratoIdAndDataVencimentoBetween(
-                contratoId, mesInicio, mesFim);
-
-        if (jaExiste) {
+        if (jaPossuiCobrancaNoMes(contrato, today)) {
             throw new BusinessException("Cobrança para o mês atual já foi gerada para este contrato");
         }
 
-        LocalDate dataVencimento = contrato.getDataInicio().withMonth(today.getMonthValue())
-                .withYear(today.getYear());
+        criarCobrancaDoMes(contrato, today);
+
+        return contratoMapper.toResponse(findContratoById(contratoId));
+    }
+
+    /**
+     * Gera a parcela do mês de referência para um contrato, sem lançar exceção de negócio:
+     * usada pelo job mensal (CobrancaScheduler). Retorna {@code true} apenas quando a
+     * cobrança foi efetivamente criada.
+     *
+     * <p>Pula o contrato quando ele não é mensal, não está ativo, está fora da janela
+     * dataInicio/dataFim ou já possui cobrança no mês de referência.</p>
+     */
+    @Transactional
+    public boolean gerarCobrancaMensalAutomatica(Long contratoId, LocalDate referencia) {
+        Contrato contrato = findContratoById(contratoId);
+
+        if (contrato.getPeriodicidade() != Periodicidade.MENSAL
+                || contrato.getStatus() != StatusContrato.ATIVO) {
+            log.debug("Contrato id={} ignorado na geração mensal (periodicidade/status)", contratoId);
+            return false;
+        }
+
+        if (!dentroDaVigencia(contrato, referencia)) {
+            log.info("Contrato id={} ignorado na geração mensal: fora da vigência ({} a {})",
+                    contratoId, contrato.getDataInicio(), contrato.getDataFim());
+            return false;
+        }
+
+        if (jaPossuiCobrancaNoMes(contrato, referencia)) {
+            log.info("Contrato id={} já possui cobrança no mês de referência; ignorando duplicata", contratoId);
+            return false;
+        }
+
+        criarCobrancaDoMes(contrato, referencia);
+        return true;
+    }
+
+    /**
+     * Verifica se o mês de referência está dentro da janela dataInicio/dataFim do contrato.
+     * A comparação é feita pelo mês: um contrato iniciado em 20/03 já gera cobrança em março.
+     */
+    private boolean dentroDaVigencia(Contrato contrato, LocalDate referencia) {
+        LocalDate mesInicio = referencia.withDayOfMonth(1);
+        LocalDate mesFim = referencia.withDayOfMonth(referencia.lengthOfMonth());
+
+        if (contrato.getDataInicio() != null && contrato.getDataInicio().isAfter(mesFim)) {
+            return false;
+        }
+        return contrato.getDataFim() == null || !contrato.getDataFim().isBefore(mesInicio);
+    }
+
+    private boolean jaPossuiCobrancaNoMes(Contrato contrato, LocalDate referencia) {
+        LocalDate mesInicio = referencia.withDayOfMonth(1);
+        LocalDate mesFim = referencia.withDayOfMonth(referencia.lengthOfMonth());
+        return cobrancaRepository.existsByContratoIdAndDataVencimentoBetween(
+                contrato.getId(), mesInicio, mesFim);
+    }
+
+    /**
+     * Cria e persiste a cobrança do mês de referência usando o dia de vencimento do contrato.
+     */
+    private Cobranca criarCobrancaDoMes(Contrato contrato, LocalDate referencia) {
+        LocalDate dataVencimento = calcularVencimento(contrato, referencia);
 
         Cobranca cobranca = Cobranca.builder()
                 .contrato(contrato)
@@ -143,10 +205,21 @@ public class ContratoService {
                 .status(StatusCobranca.PENDENTE)
                 .build();
 
-        cobrancaRepository.save(cobranca);
-        log.info("Cobrança mensal gerada para contrato id: {}, vencimento: {}", contratoId, dataVencimento);
+        Cobranca saved = cobrancaRepository.save(cobranca);
+        log.info("Cobrança mensal gerada para contrato id: {}, vencimento: {}",
+                contrato.getId(), dataVencimento);
+        return saved;
+    }
 
-        return contratoMapper.toResponse(findContratoById(contratoId));
+    /**
+     * O vencimento mantém o dia da dataInicio do contrato no mês de referência.
+     * Quando o dia não existe no mês (ex.: dia 31 em fevereiro), usa o último dia do mês.
+     */
+    private LocalDate calcularVencimento(Contrato contrato, LocalDate referencia) {
+        int diaContrato = contrato.getDataInicio() != null
+                ? contrato.getDataInicio().getDayOfMonth()
+                : referencia.getDayOfMonth();
+        return referencia.withDayOfMonth(Math.min(diaContrato, referencia.lengthOfMonth()));
     }
 
     private Contrato findContratoById(Long id) {
