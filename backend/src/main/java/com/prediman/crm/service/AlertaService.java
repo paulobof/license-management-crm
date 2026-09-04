@@ -159,13 +159,19 @@ public class AlertaService {
         long documentosVencidos = documentoRepository.countVencidos(today);
         long cobrancasVencidas = cobrancaRepository.countByStatusAndDataVencimentoBefore(
                 StatusCobranca.PENDENTE, today);
-        long totalPendentes = documentosAVencer + documentosVencidos + cobrancasVencidas;
+        // Cobrancas a vencer tambem entram: getAlertasPendentes() as lista, e sem elas o
+        // contador do sino ficaria menor que a quantidade de itens exibida na tela.
+        long cobrancasAVencer = cobrancaRepository.countByStatusAndDataVencimentoBetween(
+                StatusCobranca.PENDENTE, today, today.plusDays(maxDias));
+        long totalPendentes = documentosAVencer + documentosVencidos
+                + cobrancasVencidas + cobrancasAVencer;
 
         return NotificacaoSummaryResponse.builder()
                 .totalPendentes(totalPendentes)
                 .documentosAVencer(documentosAVencer)
                 .documentosVencidos(documentosVencidos)
                 .cobrancasVencidas(cobrancasVencidas)
+                .cobrancasAVencer(cobrancasAVencer)
                 .build();
     }
 

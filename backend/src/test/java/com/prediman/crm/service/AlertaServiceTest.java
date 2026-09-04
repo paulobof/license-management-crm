@@ -1635,6 +1635,27 @@ class AlertaServiceTest {
         assertThat(summary.getTotalPendentes()).isEqualTo(7L);
     }
 
+    /**
+     * O contador do sino precisa somar as cobrancas a vencer: getAlertasPendentes() as lista,
+     * entao sem elas o badge exibiria um numero menor que a quantidade de itens da tela.
+     */
+    @Test
+    void getNotificacaoSummary_incluiCobrancasAVencer() {
+        when(configuracaoAlertaRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(defaultConfig));
+        when(documentoRepository.countAVencer(any(LocalDate.class), any(LocalDate.class))).thenReturn(1L);
+        when(documentoRepository.countVencidos(any(LocalDate.class))).thenReturn(0L);
+        when(cobrancaRepository.countByStatusAndDataVencimentoBefore(eq(StatusCobranca.PENDENTE), any(LocalDate.class)))
+                .thenReturn(2L);
+        when(cobrancaRepository.countByStatusAndDataVencimentoBetween(eq(StatusCobranca.PENDENTE),
+                any(LocalDate.class), any(LocalDate.class))).thenReturn(3L);
+
+        NotificacaoSummaryResponse summary = alertaService.getNotificacaoSummary();
+
+        assertThat(summary.getCobrancasAVencer()).isEqualTo(3L);
+        assertThat(summary.getCobrancasVencidas()).isEqualTo(2L);
+        assertThat(summary.getTotalPendentes()).isEqualTo(6L);
+    }
+
     // -------------------------------------------------------------------------
     // toAlertaLogResponse com alertas de cobranca (documento == null)
     // -------------------------------------------------------------------------

@@ -122,7 +122,11 @@ public class ExportService {
         escreverLinha(csv, CABECALHO_DOCUMENTOS);
 
         Specification<Documento> spec = specDocumentos(search, categoria, status, clienteId);
-        Sort ordenacao = Sort.by(Sort.Order.asc("dataValidade").nullsLast());
+        // Sem nullsLast(): o Hibernate lanca UnsupportedOperationException ("Applying Null
+        // Precedence using Criteria Queries is not yet supported") ao combinar precedencia de
+        // nulos com Specification. No PostgreSQL a ordenacao ASC ja coloca NULL por ultimo,
+        // que e o comportamento desejado — documentos sem validade vao para o fim do relatorio.
+        Sort ordenacao = Sort.by(Sort.Order.asc("dataValidade"));
         LocalDate hoje = LocalDate.now();
 
         Function<Pageable, Page<Documento>> consulta = pageable -> documentoRepository.findAll(spec, pageable);

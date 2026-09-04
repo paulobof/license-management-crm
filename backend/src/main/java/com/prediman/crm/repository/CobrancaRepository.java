@@ -28,6 +28,12 @@ public interface CobrancaRepository extends JpaRepository<Cobranca, Long>, JpaSp
      */
     long countByStatusAndDataVencimentoBefore(StatusCobranca status, LocalDate data);
 
+    /**
+     * Cobrancas ainda em aberto que vencem dentro da janela de antecedencia (inclusive).
+     * Usada pelo contador do sino, para que ele reflita a mesma lista de alertas pendentes.
+     */
+    long countByStatusAndDataVencimentoBetween(StatusCobranca status, LocalDate inicio, LocalDate fim);
+
     @Query("SELECT CASE WHEN COUNT(c) > 0 THEN true ELSE false END FROM Cobranca c " +
            "WHERE c.contrato.cliente.id = :clienteId AND c.status = :status")
     boolean existsByClienteIdAndStatus(@Param("clienteId") Long clienteId, @Param("status") StatusCobranca status);

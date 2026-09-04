@@ -231,7 +231,7 @@ class ExportServiceTest {
     }
 
     @Test
-    @DisplayName("exportarDocumentos ordena por data de validade ascendente com nulos ao final")
+    @DisplayName("exportarDocumentos ordena por data de validade ascendente sem precedencia explicita de nulos")
     void exportarDocumentos_ordenaPorValidade() {
         mockPaginaDocumentos(List.of());
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
@@ -242,7 +242,11 @@ class ExportServiceTest {
         Sort.Order order = captor.getValue().getSort().getOrderFor("dataValidade");
         assertThat(order).isNotNull();
         assertThat(order.isAscending()).isTrue();
-        assertThat(order.getNullHandling()).isEqualTo(Sort.NullHandling.NULLS_LAST);
+        // NATIVE, e nao NULLS_LAST: o Hibernate lanca UnsupportedOperationException ao aplicar
+        // precedencia de nulos em query por Criteria (Specification), fazendo o endpoint
+        // responder 500. No PostgreSQL o ASC nativo ja coloca NULL por ultimo.
+        // A ordenacao efetiva e verificada contra o banco real em ExportServiceIntegrationTest.
+        assertThat(order.getNullHandling()).isEqualTo(Sort.NullHandling.NATIVE);
         assertThat(captor.getValue().getPageSize()).isEqualTo(500);
     }
 

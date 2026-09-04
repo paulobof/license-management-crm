@@ -15,4 +15,5 @@ public class NotificacaoSummaryResponse {
     private long documentosAVencer;
     private long documentosVencidos;
     private long cobrancasVencidas;
+    private long cobrancasAVencer;
 }

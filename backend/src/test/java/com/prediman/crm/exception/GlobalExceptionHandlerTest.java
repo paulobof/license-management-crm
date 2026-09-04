@@ -8,6 +8,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.validation.BindingResult;
@@ -266,5 +267,32 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         assertThat(response.getBody().getStatus()).isEqualTo(500);
+    }
+
+    @Test
+    void handleAccessDenied_returnsForbidden() {
+        AccessDeniedException ex = new AccessDeniedException("Access is denied");
+
+        ResponseEntity<ErrorResponse> response = handler.handleAccessDenied(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getStatus()).isEqualTo(403);
+        assertThat(response.getBody().getError()).isEqualTo("Acesso negado");
+        assertThat(response.getBody().getMessage())
+                .isEqualTo("Voce nao tem permissao para executar esta operacao.");
+        assertThat(response.getBody().getTimestamp()).isNotNull();
+    }
+
+    /**
+     * AccessDeniedException e subclasse de RuntimeException: sem um handler dedicado ela cairia
+     * no handleGeneral e viraria 500, escondendo a falha de autorizacao do cliente.
+     */
+    @Test
+    void handleAccessDenied_naoEhTratadaComoErroInterno() {
+        AccessDeniedException ex = new AccessDeniedException("Access is denied");
+
+        assertThat(handler.handleAccessDenied(ex).getStatusCode())
+                .isNotEqualTo(handler.handleGeneral(ex).getStatusCode());
     }
 }

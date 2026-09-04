@@ -152,6 +152,7 @@ export interface NotificacaoSummary {
   documentosAVencer: number;
   documentosVencidos: number;
   cobrancasVencidas: number;
+  cobrancasAVencer: number;
 }
 
 export interface ConfiguracaoAlerta {
